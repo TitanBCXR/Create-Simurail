@@ -453,10 +453,10 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			return;
 		}
 		
-		// Save client-side config values immediately (fluid visuals etc.)
+		boolean replaceVanillaChanged = (currentValues.fluidReplaceVanilla != originalValues.fluidReplaceVanilla);
+		
 		currentValues.applyToConfig();
 		
-		// Send server-side config values to server for validation and saving
 		UpdateLightweightPhysicsConfigPacket packet = new UpdateLightweightPhysicsConfigPacket(currentValues);
 		SimurailPackets.sendToServer(packet);
 		
@@ -464,6 +464,10 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		isDirty = false;
 		if (saveButton != null) {
 			saveButton.active = false;
+		}
+		
+		if (replaceVanillaChanged && minecraft.levelRenderer != null) {
+			minecraft.levelRenderer.allChanged();
 		}
 		
 		setStatusMessage("Saved successfully", Dex5Colors.SUCCESS);

@@ -136,6 +136,7 @@ public class FluidCubeRenderer {
 			}
 
 			Vec3 flow = fluidState.getFlow(level, pos);
+			float fluidHeight = fluidState.getHeight(level, pos);
 			
 			for (int sx = 0; sx < subdivision; sx++) {
 				for (int sy = 0; sy < subdivision; sy++) {
@@ -149,6 +150,17 @@ public class FluidCubeRenderer {
 						double offsetY = pos.getY() + sy * cubeSize + cubeSize * 0.5;
 						double offsetZ = pos.getZ() + sz * cubeSize + cubeSize * 0.5;
 						
+						double yInBlock = sy * cubeSize + cubeSize * 0.5;
+						if (yInBlock > fluidHeight) {
+							continue;
+						}
+						
+						double adjustedSize = cubeSize * 0.8;
+						if (sy == subdivision - 1 && yInBlock + cubeSize * 0.5 > fluidHeight) {
+							double excess = (yInBlock + cubeSize * 0.5) - fluidHeight;
+							adjustedSize = Math.max(0.1, cubeSize * 0.8 - excess);
+						}
+						
 						float uvOffsetX = sx * (float)cubeSize;
 						float uvOffsetZ = sz * (float)cubeSize;
 						
@@ -157,7 +169,7 @@ public class FluidCubeRenderer {
 							flow,
 							fluidState,
 							pos,
-							cubeSize * 0.8,
+							adjustedSize,
 							level.random.nextFloat() * 20f,
 							uvOffsetX,
 							uvOffsetZ
