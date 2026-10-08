@@ -42,6 +42,10 @@ public class FluidCubeRenderer {
 
 	private static final List<FloatingCube> cubePool = new ArrayList<>();
 	private static int tickCounter = 0;
+	private static int debugLogTimer = 0;
+	private static int lastSpawnAttempts = 0;
+	private static int lastSurfaceBlocksFound = 0;
+	private static int lastCubesRendered = 0;
 	
 	private static FluidMesh cubeMesh;
 	private static FluidMesh dropletMesh;
@@ -69,6 +73,7 @@ public class FluidCubeRenderer {
 		}
 
 		tickCounter++;
+		debugLogTimer++;
 		Level level = mc.level;
 		
 		// Simulate existing cubes
@@ -77,6 +82,20 @@ public class FluidCubeRenderer {
 		// Spawn new cubes on surface blocks
 		if (tickCounter % 2 == 0) {
 			spawnCubesOnSurface(mc);
+		}
+		
+		// Debug logging every 5 seconds (100 ticks)
+		if (debugLogTimer >= 100) {
+			debugLogTimer = 0;
+			try {
+				if (SimurailConfig.server().physics.lightweightDebugLogging.get()) {
+					System.out.println("[Simurail FluidCubeRenderer] Active: " + cubePool.size() + 
+						", SpawnAttempts: " + lastSpawnAttempts + 
+						", SurfaceFound: " + lastSurfaceBlocksFound + 
+						", LastRendered: " + lastCubesRendered);
+				}
+			} catch (Exception e) {
+			}
 		}
 	}
 
@@ -87,9 +106,11 @@ public class FluidCubeRenderer {
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 			if (style == 0 || cubePool.isEmpty()) {
+				lastCubesRendered = 0;
 				return;
 			}
 		} catch (Exception e) {
+			lastCubesRendered = 0;
 			return;
 		}
 
@@ -100,6 +121,7 @@ public class FluidCubeRenderer {
 		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
 		double radiusSq = renderRadius * renderRadius;
 		
+		int rendered = 0;
 		for (FloatingCube cube : cubePool) {
 			Vec3 renderPos = cube.getRenderPos(partialTick);
 			double dx = renderPos.x - camPos.x;
@@ -120,8 +142,10 @@ public class FluidCubeRenderer {
 			}
 			
 			cube.render(poseStack, bufferSource, camPos, partialTick, mc.level);
+			rendered++;
 		}
 		
+		lastCubesRendered = rendered;
 		bufferSource.endBatch();
 	}
 
@@ -134,6 +158,8 @@ public class FluidCubeRenderer {
 		int effectiveMaxCubes = Math.min(configMaxCubes, maxTriangles / Math.max(1, meshTriangles));
 		
 		if (cubePool.size() >= effectiveMaxCubes) {
+			lastSpawnAttempts = 0;
+			lastSurfaceBlocksFound = 0;
 			return;
 		}
 		
@@ -144,6 +170,9 @@ public class FluidCubeRenderer {
 		
 		// Sample random surface blocks
 		int attempts = (int) (density * 16);
+		int surfaceFound = 0;
+		lastSpawnAttempts = attempts;
+		
 		for (int i = 0; i < attempts && cubePool.size() < effectiveMaxCubes; i++) {
 			int dx = level.random.nextInt(renderRadius * 2) - renderRadius;
 			int dy = level.random.nextInt(16) - 8;
@@ -160,6 +189,8 @@ public class FluidCubeRenderer {
 			if (!level.getFluidState(pos.above()).isEmpty()) {
 				continue;
 			}
+			
+			surfaceFound++;
 			
 			float fluidHeight = fluidState.getHeight(level, pos);
 			double surfaceY = pos.getY() + fluidHeight;
@@ -182,6 +213,8 @@ public class FluidCubeRenderer {
 				lifetime
 			));
 		}
+		
+		lastSurfaceBlocksFound = surfaceFound;
 	}
 
 	private static FluidMesh getSelectedMesh() {
@@ -287,6 +320,8 @@ public class FluidCubeRenderer {
 		void render(PoseStack poseStack, MultiBufferSource bufferSource, Vec3 camPos, 
 		            float partialTick, Level level) {
 			Vec3 renderPos = getRenderPos(partialTick);
+			
+			// Camera-relative position (the classic bug fix!)
 			float x = (float) (renderPos.x - camPos.x);
 			float y = (float) (renderPos.y - camPos.y);
 			float z = (float) (renderPos.z - camPos.z);
@@ -318,6 +353,7 @@ public class FluidCubeRenderer {
 			} else if (fluidState.is(FluidTags.LAVA)) {
 				color = (255 << 24) | (255 << 16) | (100 << 8) | 20;
 				light = 0xF000F0;
+				// Use solid for lava to avoid shader issues
 				renderType = RenderType.solid();
 			} else {
 				color = (217 << 24) | (50 << 16) | (50 << 8) | 255;
