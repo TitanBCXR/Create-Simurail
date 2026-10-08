@@ -6,7 +6,6 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.handling.DirectionalPayloadHandler;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
@@ -21,14 +20,11 @@ public class SimurailPackets {
 			.versioned("1.0")
 			.optional();
 		
-		// C2S: Update lightweight physics config
+		// C2S: Update lightweight physics config (server handler)
 		registrar.playToServer(
 			UpdateLightweightPhysicsConfigPacket.TYPE,
 			UpdateLightweightPhysicsConfigPacket.STREAM_CODEC,
-			new DirectionalPayloadHandler<>(
-				UpdateLightweightPhysicsConfigPacket::handle,
-				null // Client handler not needed for C2S packet
-			)
+			UpdateLightweightPhysicsConfigPacket::handle
 		);
 	}
 	

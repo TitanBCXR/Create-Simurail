@@ -75,9 +75,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	
 	// Widget references
 	private Dex5Slider radiusSlider, maxActiveSlider, updateIntervalSlider, sleepVelocitySlider;
-	private Dex5Slider fluidCurrentStrengthSlider, fluidBuoyancySlider;
 	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, cubesPerBlockSlider;
-	private Dex5ToggleButton enabledToggle, debugToggle, fluidsToggle, fluidVisualsToggle, fluidReplaceVanillaToggle;
+	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle, fluidReplaceVanillaToggle;
 	
 	private static class WidgetEntry {
 		final AbstractWidget widget;
@@ -256,54 +255,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		scrollableWidgets.add(new WidgetEntry(debugToggle, y));
 		y += WIDGET_HEIGHT + SECTION_SPACING;
 		
-		// Fluids (Server) section
-		sectionHeaders.add(new SectionHeader("Fluids (Server)", y));
-		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		
-		fluidsToggle = new Dex5ToggleButton(
-			centerX - 100, contentY, 200, 30,
-			Component.literal("Fluid Currents"),
-			currentValues.fluidsEnabled,
-			button -> {
-				currentValues.fluidsEnabled = !currentValues.fluidsEnabled;
-				((Dex5ToggleButton) button).setState(currentValues.fluidsEnabled);
-				markDirty();
-			}
-		);
-		fluidsToggle.active = canEdit;
-		scrollableWidgets.add(new WidgetEntry(fluidsToggle, y));
-		y += 30 + WIDGET_SPACING;
-		
-		fluidCurrentStrengthSlider = new Dex5Slider(
-			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
-			Component.literal("Current Strength: "),
-			Component.literal(""),
-			0, 1, currentValues.fluidCurrentStrength,
-			value -> {
-				currentValues.fluidCurrentStrength = value.floatValue();
-				markDirty();
-			}
-		);
-		fluidCurrentStrengthSlider.active = canEdit;
-		scrollableWidgets.add(new WidgetEntry(fluidCurrentStrengthSlider, y));
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		fluidBuoyancySlider = new Dex5Slider(
-			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
-			Component.literal("Buoyancy: "),
-			Component.literal(""),
-			0, 1, currentValues.fluidBuoyancy,
-			value -> {
-				currentValues.fluidBuoyancy = value.floatValue();
-				markDirty();
-			}
-		);
-		fluidBuoyancySlider.active = canEdit;
-		scrollableWidgets.add(new WidgetEntry(fluidBuoyancySlider, y));
-		y += WIDGET_HEIGHT + SECTION_SPACING;
-		
-		// Fluid Visuals (Client) section
-		sectionHeaders.add(new SectionHeader("Fluid Visuals (Client)", y));
+		// Fluids (Client) section - all fluid settings are client-side rendering options
+		sectionHeaders.add(new SectionHeader("Fluids (Client)", y));
 		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
 		
 		fluidVisualsToggle = new Dex5ToggleButton(
@@ -500,6 +453,10 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			return;
 		}
 		
+		// Save client-side config values immediately (fluid visuals etc.)
+		currentValues.applyToConfig();
+		
+		// Send server-side config values to server for validation and saving
 		UpdateLightweightPhysicsConfigPacket packet = new UpdateLightweightPhysicsConfigPacket(currentValues);
 		SimurailPackets.sendToServer(packet);
 		
@@ -519,9 +476,6 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (maxActiveSlider != null) maxActiveSlider.setValue(currentValues.maxActive);
 		if (updateIntervalSlider != null) updateIntervalSlider.setValue(currentValues.updateInterval);
 		if (sleepVelocitySlider != null) sleepVelocitySlider.setValue(currentValues.sleepVelocity);
-		if (fluidsToggle != null) fluidsToggle.setState(currentValues.fluidsEnabled);
-		if (fluidCurrentStrengthSlider != null) fluidCurrentStrengthSlider.setValue(currentValues.fluidCurrentStrength);
-		if (fluidBuoyancySlider != null) fluidBuoyancySlider.setValue(currentValues.fluidBuoyancy);
 		if (fluidVisualsToggle != null) fluidVisualsToggle.setState(currentValues.fluidRenderStyle > 0);
 		if (cubesPerBlockSlider != null) cubesPerBlockSlider.setValue(currentValues.fluidCubesPerBlock);
 		if (fluidRenderRadiusSlider != null) fluidRenderRadiusSlider.setValue(currentValues.fluidRenderRadius);

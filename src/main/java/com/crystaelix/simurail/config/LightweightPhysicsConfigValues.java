@@ -5,8 +5,10 @@ import net.neoforged.fml.loading.FMLEnvironment;
 
 /**
  * Snapshot of lightweight physics config values for GUI editing.
+ * Server fluid physics (currents/buoyancy) use fixed defaults and are not exposed in GUI.
  */
 public class LightweightPhysicsConfigValues {
+	// Server-side physics settings (exposed in GUI)
 	public boolean enabled;
 	public float activationRadius;
 	public int maxActive;
@@ -14,13 +16,7 @@ public class LightweightPhysicsConfigValues {
 	public float sleepVelocity;
 	public boolean debugLogging;
 	
-	// Fluid physics (server-side)
-	public boolean fluidsEnabled;
-	public float fluidCurrentStrength;
-	public float fluidBuoyancy;
-	public int fluidMaxMeshTriangles;
-	
-	// Fluid visuals (client-side)
+	// Client-side fluid visuals (all fluid settings are client-only)
 	public int fluidRenderStyle; // 0=VANILLA, 1=CUBE, 2=DROPLET, 3=TILE, 4=CUSTOM
 	public int fluidCubesPerBlock;
 	public int fluidRenderRadius;
@@ -40,12 +36,6 @@ public class LightweightPhysicsConfigValues {
 		values.sleepVelocity = SimurailConfig.server().physics.lightweightSleepVelocity.get().floatValue();
 		values.debugLogging = SimurailConfig.server().physics.lightweightDebugLogging.get();
 		
-		// Fluid physics (server)
-		values.fluidsEnabled = SimurailConfig.server().physics.fluidsCurrentsEnabled.get();
-		values.fluidCurrentStrength = SimurailConfig.server().physics.fluidsCurrentStrength.get().floatValue();
-		values.fluidBuoyancy = SimurailConfig.server().physics.fluidsBuoyancy.get().floatValue();
-		values.fluidMaxMeshTriangles = SimurailConfig.server().physics.fluidsMaxMeshTriangles.get();
-		
 		// Fluid visuals (client) - only load on client side via helper to avoid classloading client config on server
 		if (FMLEnvironment.dist == Dist.CLIENT) {
 			loadClientConfigValues(values);
@@ -63,13 +53,7 @@ public class LightweightPhysicsConfigValues {
 		values.sleepVelocity = 0.05f;
 		values.debugLogging = false;
 		
-		// Fluid physics defaults
-		values.fluidsEnabled = true;
-		values.fluidCurrentStrength = 0.04f;
-		values.fluidBuoyancy = 0.03f;
-		values.fluidMaxMeshTriangles = 48;
-		
-		// Fluid visuals defaults
+		// Fluid visuals defaults (all client-side)
 		values.fluidRenderStyle = 0; // VANILLA
 		values.fluidCubesPerBlock = 8;
 		values.fluidRenderRadius = 16;
@@ -94,13 +78,7 @@ public class LightweightPhysicsConfigValues {
 		this.sleepVelocity = other.sleepVelocity;
 		this.debugLogging = other.debugLogging;
 		
-		// Fluid physics
-		this.fluidsEnabled = other.fluidsEnabled;
-		this.fluidCurrentStrength = other.fluidCurrentStrength;
-		this.fluidBuoyancy = other.fluidBuoyancy;
-		this.fluidMaxMeshTriangles = other.fluidMaxMeshTriangles;
-		
-		// Fluid visuals
+		// Fluid visuals (client-only)
 		this.fluidRenderStyle = other.fluidRenderStyle;
 		this.fluidCubesPerBlock = other.fluidCubesPerBlock;
 		this.fluidRenderRadius = other.fluidRenderRadius;
@@ -110,6 +88,7 @@ public class LightweightPhysicsConfigValues {
 	}
 	
 	public void applyToConfig() {
+		// Server-side physics settings
 		SimurailConfig.server().physics.lightweightEnabled.set(enabled);
 		SimurailConfig.server().physics.lightweightActivationRadius.set((double) activationRadius);
 		SimurailConfig.server().physics.lightweightMaxActive.set(maxActive);
@@ -117,18 +96,12 @@ public class LightweightPhysicsConfigValues {
 		SimurailConfig.server().physics.lightweightSleepVelocity.set((double) sleepVelocity);
 		SimurailConfig.server().physics.lightweightDebugLogging.set(debugLogging);
 		
-		// Fluid physics (server)
-		SimurailConfig.server().physics.fluidsCurrentsEnabled.set(fluidsEnabled);
-		SimurailConfig.server().physics.fluidsCurrentStrength.set((double) fluidCurrentStrength);
-		SimurailConfig.server().physics.fluidsBuoyancy.set((double) fluidBuoyancy);
-		SimurailConfig.server().physics.fluidsMaxMeshTriangles.set(fluidMaxMeshTriangles);
-		
 		// Fluid visuals (client) - only apply on client side via helper
 		if (FMLEnvironment.dist == Dist.CLIENT) {
 			applyClientConfigValues(this);
+			// Save client config spec to disk (config/simurail-client.toml)
+			SimurailConfig.client().specification.save();
 		}
-		
-		// Note: Config auto-saves in NeoForge, no manual save needed
 	}
 	
 	/**
@@ -147,9 +120,6 @@ public class LightweightPhysicsConfigValues {
 		       maxActive >= 0 && maxActive <= 2048 &&
 		       updateInterval >= 1 && updateInterval <= 20 &&
 		       sleepVelocity >= 0 && sleepVelocity <= 10 &&
-		       fluidCurrentStrength >= 0 && fluidCurrentStrength <= 1 &&
-		       fluidBuoyancy >= 0 && fluidBuoyancy <= 1 &&
-		       fluidMaxMeshTriangles >= 2 && fluidMaxMeshTriangles <= 256 &&
 		       fluidRenderStyle >= 0 && fluidRenderStyle <= 4 &&
 		       (fluidCubesPerBlock == 1 || fluidCubesPerBlock == 8 || fluidCubesPerBlock == 27) &&
 		       fluidRenderRadius >= 4 && fluidRenderRadius <= 64 &&

@@ -2,6 +2,7 @@ package com.crystaelix.simurail.network;
 
 import com.crystaelix.simurail.Simurail;
 import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
+import com.crystaelix.simurail.config.SimurailConfig;
 
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
@@ -15,7 +16,6 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * C2S packet to update lightweight physics config values.
  * Only operators (permission level 2+) can change server config.
- * Client config values are applied locally without server validation.
  */
 public record UpdateLightweightPhysicsConfigPacket(
 	boolean enabled,
@@ -23,10 +23,7 @@ public record UpdateLightweightPhysicsConfigPacket(
 	int maxActive,
 	int updateInterval,
 	float sleepVelocity,
-	boolean debugLogging,
-	boolean fluidsEnabled,
-	float fluidCurrentStrength,
-	float fluidBuoyancy
+	boolean debugLogging
 ) implements CustomPacketPayload {
 	
 	public static final Type<UpdateLightweightPhysicsConfigPacket> TYPE = 
@@ -42,10 +39,7 @@ public record UpdateLightweightPhysicsConfigPacket(
 					ByteBufCodecs.VAR_INT.decode(buf),
 					ByteBufCodecs.VAR_INT.decode(buf),
 					ByteBufCodecs.FLOAT.decode(buf),
-					ByteBufCodecs.BOOL.decode(buf),
-					ByteBufCodecs.BOOL.decode(buf),
-					ByteBufCodecs.FLOAT.decode(buf),
-					ByteBufCodecs.FLOAT.decode(buf)
+					ByteBufCodecs.BOOL.decode(buf)
 				);
 			}
 			
@@ -57,9 +51,6 @@ public record UpdateLightweightPhysicsConfigPacket(
 				ByteBufCodecs.VAR_INT.encode(buf, packet.updateInterval);
 				ByteBufCodecs.FLOAT.encode(buf, packet.sleepVelocity);
 				ByteBufCodecs.BOOL.encode(buf, packet.debugLogging);
-				ByteBufCodecs.BOOL.encode(buf, packet.fluidsEnabled);
-				ByteBufCodecs.FLOAT.encode(buf, packet.fluidCurrentStrength);
-				ByteBufCodecs.FLOAT.encode(buf, packet.fluidBuoyancy);
 			}
 		};
 	
@@ -70,10 +61,7 @@ public record UpdateLightweightPhysicsConfigPacket(
 			values.maxActive,
 			values.updateInterval,
 			values.sleepVelocity,
-			values.debugLogging,
-			values.fluidsEnabled,
-			values.fluidCurrentStrength,
-			values.fluidBuoyancy
+			values.debugLogging
 		);
 	}
 	
@@ -87,6 +75,7 @@ public record UpdateLightweightPhysicsConfigPacket(
 			// Must be on server side
 			if (context.flow().isServerbound() && context.player() instanceof ServerPlayer serverPlayer) {
 				// Permission check: require operator level 2+
+				// (Always allowed in singleplayer for the integrated server owner)
 				if (!serverPlayer.hasPermissions(2)) {
 					serverPlayer.sendSystemMessage(
 						Component.literal("§cError: You need operator permissions to change server config")
@@ -94,30 +83,29 @@ public record UpdateLightweightPhysicsConfigPacket(
 					return;
 				}
 				
-				// Validate values
-				LightweightPhysicsConfigValues values = new LightweightPhysicsConfigValues();
-				values.enabled = packet.enabled;
-				values.activationRadius = packet.activationRadius;
-				values.maxActive = packet.maxActive;
-				values.updateInterval = packet.updateInterval;
-				values.sleepVelocity = packet.sleepVelocity;
-				values.debugLogging = packet.debugLogging;
-				values.fluidsEnabled = packet.fluidsEnabled;
-				values.fluidCurrentStrength = packet.fluidCurrentStrength;
-				values.fluidBuoyancy = packet.fluidBuoyancy;
+				// Validate and clamp values
+				boolean enabled = packet.enabled;
+				float activationRadius = Math.max(0, Math.min(256, packet.activationRadius));
+				int maxActive = Math.max(0, Math.min(2048, packet.maxActive));
+				int updateInterval = Math.max(1, Math.min(20, packet.updateInterval));
+				float sleepVelocity = Math.max(0, Math.min(10, packet.sleepVelocity));
+				boolean debugLogging = packet.debugLogging;
 				
-				if (!values.validate()) {
-					serverPlayer.sendSystemMessage(
-						Component.literal("§cError: Invalid config values (out of range)")
-					);
-					return;
-				}
+				// Apply server-side physics settings only
+				SimurailConfig.server().physics.lightweightEnabled.set(enabled);
+				SimurailConfig.server().physics.lightweightActivationRadius.set((double) activationRadius);
+				SimurailConfig.server().physics.lightweightMaxActive.set(maxActive);
+				SimurailConfig.server().physics.lightweightUpdateInterval.set(updateInterval);
+				SimurailConfig.server().physics.lightweightSleepVelocity.set((double) sleepVelocity);
+				SimurailConfig.server().physics.lightweightDebugLogging.set(debugLogging);
 				
-				// Apply to server config
-				values.applyToConfig();
+				// Save the server config spec to disk
+				// In singleplayer: saves/<world>/serverconfig/simurail-server.toml
+				// On dedicated server: config/simurail-server.toml
+				com.crystaelix.simurail.config.SimurailConfig.server().specification.save();
 				
 				serverPlayer.sendSystemMessage(
-					Component.literal("§aLightweight physics config updated successfully")
+					Component.literal("§aLightweight physics config updated and saved successfully")
 				);
 			}
 		});
