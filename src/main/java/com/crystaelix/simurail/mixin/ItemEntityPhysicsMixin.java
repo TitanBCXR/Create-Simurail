@@ -46,7 +46,17 @@ public abstract class ItemEntityPhysicsMixin implements EntityMovementExtension 
 		}
 
 		// Skip if item is too young, removed, or in water
-		if (self.isRemoved() || self.getAge() < 10 || self.isInWater()) {
+		if (self.isRemoved() || self.getAge() < 10) {
+			return;
+		}
+
+		// Apply fluid current physics
+		if (SimurailConfig.server().physics.fluidsCurrentsEnabled.get()) {
+			simurail$applyFluidCurrents(self);
+		}
+
+		// Skip sublevel tracking if in water (already handled by currents)
+		if (self.isInWater()) {
 			return;
 		}
 
@@ -162,5 +172,52 @@ public abstract class ItemEntityPhysicsMixin implements EntityMovementExtension 
 		
 		// Require at least one solid sublevel block below the item
 		return samples > 0 ? foundSubLevel : null;
+	}
+
+	/**
+	 * Apply fluid current forces to items in water/lava.
+	 */
+	@Unique
+	private void simurail$applyFluidCurrents(ItemEntity item) {
+		if (!item.isInFluidType()) {
+			return;
+		}
+
+		Vec3 pos = item.position();
+		BlockPos blockPos = BlockPos.containing(pos);
+		net.minecraft.world.level.material.FluidState fluidState = item.level().getFluidState(blockPos);
+
+		if (fluidState.isEmpty()) {
+			return;
+		}
+
+		// Get flow direction from fluid state
+		Vec3 flow = fluidState.getFlow(item.level(), blockPos);
+		
+		// If no flow, nothing to do
+		if (flow.lengthSqr() < 0.001) {
+			return;
+		}
+
+		float currentStrength = SimurailConfig.server().physics.fluidsCurrentStrength.get().floatValue();
+		float buoyancy = SimurailConfig.server().physics.fluidsBuoyancy.get().floatValue();
+
+		// Apply current force
+		Vec3 currentForce = flow.scale(currentStrength);
+		item.setDeltaMovement(item.getDeltaMovement().add(currentForce));
+
+		// Apply buoyancy in water (makes items float)
+		if (fluidState.is(net.minecraft.tags.FluidTags.WATER)) {
+			// Buoyancy pushes upward when item is below surface
+			double surfaceY = blockPos.getY() + fluidState.getHeight(item.level(), blockPos);
+			if (pos.y < surfaceY) {
+				double buoyancyForce = buoyancy * (surfaceY - pos.y);
+				item.setDeltaMovement(item.getDeltaMovement().add(0, Math.min(buoyancyForce, 0.1), 0));
+			}
+		} else if (fluidState.is(net.minecraft.tags.FluidTags.LAVA)) {
+			// Lava has more drag (items sink slower but don't float)
+			Vec3 vel = item.getDeltaMovement();
+			item.setDeltaMovement(vel.multiply(0.95, 0.85, 0.95));
+		}
 	}
 }

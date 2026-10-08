@@ -66,6 +66,11 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 	public final ConfigInt lightweightUpdateInterval = i(4, 1, 20, "updateInterval", Comments.lightweightUpdateInterval);
 	public final ConfigBool lightweightDebugLogging = b(false, "debugLogging", Comments.lightweightDebugLogging);
 
+	public final ConfigGroup fluids = group(1, "fluids", "Fluid Physics");
+	public final ConfigBool fluidsCurrentsEnabled = b(true, "currentsEnabled", Comments.fluidsCurrentsEnabled);
+	public final ConfigFloat fluidsCurrentStrength = f(0.04F, 0, 1, "currentStrength", Comments.fluidsCurrentStrength);
+	public final ConfigFloat fluidsBuoyancy = f(0.03F, 0, 1, "buoyancy", Comments.fluidsBuoyancy);
+
 	@Override
 	public String getName() {
 		return "physics";
@@ -127,5 +132,9 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 		static String lightweightFrictionScale = "Friction multiplier. (Currently unused but kept for future optimizations)";
 		static String lightweightUpdateInterval = "Number of ticks between checks for whether items should track a sublevel. Higher values save performance but reduce responsiveness.";
 		static String lightweightDebugLogging = "Enable debug logging for sublevel tracking. Logs when items start/stop tracking moving trains.";
+
+		static String fluidsCurrentsEnabled = "Enable fluid current physics. Items and lightweight bodies in water/lava are pushed by the fluid's flow direction.";
+		static String fluidsCurrentStrength = "Multiplier for fluid current force applied to items and bodies. Higher values make currents push harder.";
+		static String fluidsBuoyancy = "Buoyancy force applied to items in water. Higher values make items float more strongly toward the surface. Lava uses drag instead.";
 	}
 }

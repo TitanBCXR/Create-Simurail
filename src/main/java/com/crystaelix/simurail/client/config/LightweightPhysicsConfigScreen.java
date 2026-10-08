@@ -63,9 +63,20 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private Dex5Slider updateIntervalSlider;
 	private Dex5Slider sleepVelocitySlider;
 	
+	// Fluid physics sliders (server, op-gated)
+	private Dex5Slider fluidCurrentStrengthSlider;
+	private Dex5Slider fluidBuoyancySlider;
+	
+	// Fluid visual sliders (client, always editable)
+	private Dex5Slider fluidRenderRadiusSlider;
+	private Dex5Slider fluidMaxCubesSlider;
+	
 	// Toggle buttons
 	private Dex5ToggleButton enabledToggle;
 	private Dex5ToggleButton debugToggle;
+	private Dex5ToggleButton fluidsToggle;
+	private Dex5ToggleButton fluidVisualsToggle;
+	private Dex5ToggleButton fluidReplaceVanillaToggle;
 	
 	// Action buttons
 	private Button resetButton;
@@ -196,6 +207,139 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		);
 		debugToggle.active = canEdit;
 		addRenderableWidget(debugToggle);
+		y += 30;
+		
+		// === FLUIDS SECTION ===
+		// Section title
+		y += 10;
+		
+		// Fluid currents toggle (server, op-gated)
+		fluidsToggle = new Dex5ToggleButton(
+			centerX - 100, y, 200, 30,
+			Component.literal("Fluid Currents"),
+			currentValues.fluidsEnabled,
+			button -> {
+				currentValues.fluidsEnabled = !currentValues.fluidsEnabled;
+				((Dex5ToggleButton) button).setState(currentValues.fluidsEnabled);
+				markDirty();
+			}
+		);
+		fluidsToggle.active = canEdit;
+		addRenderableWidget(fluidsToggle);
+		y += 36;
+		
+		// Current strength slider (server, op-gated)
+		fluidCurrentStrengthSlider = new Dex5Slider(
+			leftX, y, contentWidth, WIDGET_HEIGHT,
+			Component.literal("Current Strength: "),
+			Component.literal(""),
+			0, 1, currentValues.fluidCurrentStrength,
+			value -> {
+				currentValues.fluidCurrentStrength = value.floatValue();
+				markDirty();
+			}
+		);
+		fluidCurrentStrengthSlider.active = canEdit;
+		addRenderableWidget(fluidCurrentStrengthSlider);
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		// Buoyancy slider (server, op-gated)
+		fluidBuoyancySlider = new Dex5Slider(
+			leftX, y, contentWidth, WIDGET_HEIGHT,
+			Component.literal("Buoyancy: "),
+			Component.literal(""),
+			0, 1, currentValues.fluidBuoyancy,
+			value -> {
+				currentValues.fluidBuoyancy = value.floatValue();
+				markDirty();
+			}
+		);
+		fluidBuoyancySlider.active = canEdit;
+		addRenderableWidget(fluidBuoyancySlider);
+		y += WIDGET_HEIGHT + WIDGET_SPACING + 10;
+		
+		// Fluid visuals toggle (client, always editable)
+		fluidVisualsToggle = new Dex5ToggleButton(
+			centerX - 90, y, 180, 30,
+			Component.literal("Flowing Cubes"),
+			currentValues.fluidVisualsEnabled,
+			button -> {
+				currentValues.fluidVisualsEnabled = !currentValues.fluidVisualsEnabled;
+				((Dex5ToggleButton) button).setState(currentValues.fluidVisualsEnabled);
+				markDirty();
+			}
+		);
+		fluidVisualsToggle.active = true; // Always editable (client setting)
+		addRenderableWidget(fluidVisualsToggle);
+		y += 36;
+		
+		// Cubes per block (client, always editable) - special widget for 1/8/27 values
+		// For simplicity, using a slider with discrete steps
+		Dex5Slider cubesPerBlockSlider = new Dex5Slider(
+			leftX, y, contentWidth, WIDGET_HEIGHT,
+			Component.literal("Cubes Per Block: "),
+			Component.literal(""),
+			1, 27, currentValues.fluidCubesPerBlock,
+			value -> {
+				// Snap to 1, 8, or 27
+				int v = value.intValue();
+				if (v <= 4) {
+					currentValues.fluidCubesPerBlock = 1;
+				} else if (v <= 17) {
+					currentValues.fluidCubesPerBlock = 8;
+				} else {
+					currentValues.fluidCubesPerBlock = 27;
+				}
+				markDirty();
+			}
+		);
+		cubesPerBlockSlider.active = true; // Always editable
+		addRenderableWidget(cubesPerBlockSlider);
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		// Render radius (client, always editable)
+		fluidRenderRadiusSlider = new Dex5Slider(
+			leftX, y, contentWidth, WIDGET_HEIGHT,
+			Component.literal("Render Radius: "),
+			Component.literal(" blocks"),
+			4, 64, currentValues.fluidRenderRadius,
+			value -> {
+				currentValues.fluidRenderRadius = value.intValue();
+				markDirty();
+			}
+		);
+		fluidRenderRadiusSlider.active = true; // Always editable
+		addRenderableWidget(fluidRenderRadiusSlider);
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		// Max cubes (client, always editable)
+		fluidMaxCubesSlider = new Dex5Slider(
+			leftX, y, contentWidth, WIDGET_HEIGHT,
+			Component.literal("Max Cubes: "),
+			Component.literal(""),
+			256, 32768, currentValues.fluidMaxCubes,
+			value -> {
+				currentValues.fluidMaxCubes = value.intValue();
+				markDirty();
+			}
+		);
+		fluidMaxCubesSlider.active = true; // Always editable
+		addRenderableWidget(fluidMaxCubesSlider);
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		// Replace vanilla toggle (client, always editable)
+		fluidReplaceVanillaToggle = new Dex5ToggleButton(
+			centerX - 90, y, 180, 24,
+			Component.literal("Replace Vanilla Fluid"),
+			currentValues.fluidReplaceVanilla,
+			button -> {
+				currentValues.fluidReplaceVanilla = !currentValues.fluidReplaceVanilla;
+				((Dex5ToggleButton) button).setState(currentValues.fluidReplaceVanilla);
+				markDirty();
+			}
+		);
+		fluidReplaceVanillaToggle.active = true; // Always editable
+		addRenderableWidget(fluidReplaceVanillaToggle);
 		y += 40;
 		
 		// Action buttons at bottom
