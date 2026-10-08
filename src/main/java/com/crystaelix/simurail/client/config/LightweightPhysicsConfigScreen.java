@@ -7,19 +7,20 @@ import com.crystaelix.simurail.network.UpdateLightweightPhysicsConfigPacket;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Custom config screen for Lightweight Physics settings.
  * Styled with Dex5 theme (high-contrast dark with vibrant accents).
- * Features transparent background and optional branding watermark.
- * Implements scrollable content area with scissor clipping.
+ * Features scrollable content area with proper hit-testing.
  */
 public class LightweightPhysicsConfigScreen extends Screen {
 	
@@ -39,7 +40,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private int statusColor = Dex5Colors.TEXT_SECONDARY;
 	private long statusTime = 0;
 	
-	// Layout constants (proportional sizing)
+	// Layout constants
 	private static final float PANEL_WIDTH_RATIO = 0.85f;
 	private static final int PANEL_MIN_WIDTH = 360;
 	private static final int PANEL_MAX_WIDTH = 520;
@@ -57,34 +58,46 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private static final int BUTTON_WIDTH = 100;
 	private static final int BUTTON_HEIGHT = 24;
 	
-	// Computed layout values
+	// Computed layout
 	private int panelX, panelY, panelWidth, panelHeight;
 	private int contentX, contentY, contentWidth, contentHeight;
 	private double scrollOffset = 0;
 	private double maxScrollOffset = 0;
 	
-	// Slider components
-	private Dex5Slider radiusSlider;
-	private Dex5Slider maxActiveSlider;
-	private Dex5Slider updateIntervalSlider;
-	private Dex5Slider sleepVelocitySlider;
-	private Dex5Slider fluidCurrentStrengthSlider;
-	private Dex5Slider fluidBuoyancySlider;
-	private Dex5Slider fluidRenderRadiusSlider;
-	private Dex5Slider fluidMaxCubesSlider;
-	private Dex5Slider cubesPerBlockSlider;
+	// Scrollable widgets with their base Y positions (before scroll)
+	private final List<WidgetEntry> scrollableWidgets = new ArrayList<>();
+	private final List<SectionHeader> sectionHeaders = new ArrayList<>();
 	
-	// Toggle buttons
-	private Dex5ToggleButton enabledToggle;
-	private Dex5ToggleButton debugToggle;
-	private Dex5ToggleButton fluidsToggle;
-	private Dex5ToggleButton fluidVisualsToggle;
-	private Dex5ToggleButton fluidReplaceVanillaToggle;
-	
-	// Action buttons
+	// Footer buttons (not scrollable)
 	private Button resetButton;
 	private Button saveButton;
 	private Button cancelButton;
+	
+	// Widget references
+	private Dex5Slider radiusSlider, maxActiveSlider, updateIntervalSlider, sleepVelocitySlider;
+	private Dex5Slider fluidCurrentStrengthSlider, fluidBuoyancySlider;
+	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, cubesPerBlockSlider;
+	private Dex5ToggleButton enabledToggle, debugToggle, fluidsToggle, fluidVisualsToggle, fluidReplaceVanillaToggle;
+	
+	private static class WidgetEntry {
+		final AbstractWidget widget;
+		final int baseY;
+		
+		WidgetEntry(AbstractWidget widget, int baseY) {
+			this.widget = widget;
+			this.baseY = baseY;
+		}
+	}
+	
+	private static class SectionHeader {
+		final String text;
+		final int baseY;
+		
+		SectionHeader(String text, int baseY) {
+			this.text = text;
+			this.baseY = baseY;
+		}
+	}
 	
 	public LightweightPhysicsConfigScreen(Screen parent) {
 		super(Component.literal("Lightweight Physics Configuration"));
@@ -92,7 +105,6 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		this.originalValues = LightweightPhysicsConfigValues.loadFromConfig();
 		this.currentValues = originalValues.copy();
 		
-		// Check if player can edit (ops in multiplayer, always yes in singleplayer)
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player != null && mc.level != null) {
 			this.canEdit = mc.hasSingleplayerServer() || mc.player.hasPermissions(2);
@@ -105,7 +117,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	protected void init() {
 		super.init();
 		
-		// Compute responsive layout
+		// Compute layout
 		panelWidth = Mth.clamp((int)(this.width * PANEL_WIDTH_RATIO), PANEL_MIN_WIDTH, PANEL_MAX_WIDTH);
 		panelWidth = Math.min(panelWidth, this.width - 20);
 		
@@ -116,35 +128,43 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		panelX = (this.width - panelWidth) / 2;
 		panelY = (this.height - panelHeight) / 2;
 		
-		// Content area (scrollable region)
 		contentX = panelX + SCROLL_MARGIN;
 		contentY = panelY + TITLE_HEIGHT;
 		contentWidth = panelWidth - SCROLL_MARGIN * 2;
 		contentHeight = panelHeight - TITLE_HEIGHT - FOOTER_HEIGHT;
 		
-		// Build widgets (not added yet, will be positioned during render)
-		buildWidgets();
+		// Build scrollable content
+		buildScrollableContent();
 		
-		// Calculate max scroll based on total content height
-		int totalContentHeight = calculateTotalContentHeight();
-		maxScrollOffset = Math.max(0, totalContentHeight - contentHeight);
+		// Calculate max scroll
+		int totalHeight = scrollableWidgets.isEmpty() ? 0 : 
+			scrollableWidgets.get(scrollableWidgets.size() - 1).baseY + 
+			scrollableWidgets.get(scrollableWidgets.size() - 1).widget.getHeight();
+		maxScrollOffset = Math.max(0, totalHeight - contentHeight);
 		
-		// Add footer buttons (fixed position, always visible)
+		// Update widget positions for initial scroll
+		updateScrollableWidgetPositions();
+		
+		// Add footer buttons (fixed, always on top)
 		addFooterButtons();
 		
-		// Show permission message if read-only
 		if (!canEdit) {
 			setStatusMessage("Read-only: Requires operator permissions", Dex5Colors.WARNING);
 		}
 	}
 	
-	private void buildWidgets() {
+	private void buildScrollableContent() {
+		scrollableWidgets.clear();
+		sectionHeaders.clear();
+		
 		int widgetWidth = contentWidth - 40;
 		int leftX = contentX + 20;
+		int centerX = contentX + contentWidth / 2;
+		int y = 0;
 		
-		// Big enabled toggle
+		// Main enabled toggle
 		enabledToggle = new Dex5ToggleButton(
-			leftX + widgetWidth / 2 - 100, 0, 200, BIG_TOGGLE_HEIGHT,
+			centerX - 100, contentY, 200, BIG_TOGGLE_HEIGHT,
 			Component.literal("Lightweight Physics"),
 			currentValues.enabled,
 			button -> {
@@ -154,10 +174,15 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		enabledToggle.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(enabledToggle, y));
+		y += BIG_TOGGLE_HEIGHT + SECTION_SPACING;
 		
-		// Physics section sliders
+		// Physics section
+		sectionHeaders.add(new SectionHeader("Physics", y));
+		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
+		
 		radiusSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Activation Radius: "),
 			Component.literal(" m"),
 			0, 256, currentValues.activationRadius,
@@ -167,9 +192,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		radiusSlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(radiusSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		maxActiveSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Max Active Objects: "),
 			Component.literal(""),
 			0, 2048, currentValues.maxActive,
@@ -179,9 +206,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		maxActiveSlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(maxActiveSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		updateIntervalSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Update Interval: "),
 			Component.literal(" ticks"),
 			1, 20, currentValues.updateInterval,
@@ -191,9 +220,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		updateIntervalSlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(updateIntervalSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		sleepVelocitySlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Sleep Velocity: "),
 			Component.literal(" m/s"),
 			0, 10, currentValues.sleepVelocity,
@@ -201,12 +232,18 @@ public class LightweightPhysicsConfigScreen extends Screen {
 				currentValues.sleepVelocity = value.floatValue();
 				markDirty();
 			},
-			true // Force decimal formatting
+			true
 		);
 		sleepVelocitySlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(sleepVelocitySlider, y));
+		y += WIDGET_HEIGHT + SECTION_SPACING;
+		
+		// Debug section
+		sectionHeaders.add(new SectionHeader("Debug", y));
+		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
 		
 		debugToggle = new Dex5ToggleButton(
-			leftX + widgetWidth / 2 - 80, 0, 160, WIDGET_HEIGHT,
+			centerX - 80, contentY, 160, WIDGET_HEIGHT,
 			Component.literal("Debug Logging"),
 			currentValues.debugLogging,
 			button -> {
@@ -216,10 +253,15 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		debugToggle.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(debugToggle, y));
+		y += WIDGET_HEIGHT + SECTION_SPACING;
 		
-		// Fluid server section
+		// Fluids (Server) section
+		sectionHeaders.add(new SectionHeader("Fluids (Server)", y));
+		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
+		
 		fluidsToggle = new Dex5ToggleButton(
-			leftX + widgetWidth / 2 - 100, 0, 200, 30,
+			centerX - 100, contentY, 200, 30,
 			Component.literal("Fluid Currents"),
 			currentValues.fluidsEnabled,
 			button -> {
@@ -229,9 +271,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidsToggle.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(fluidsToggle, y));
+		y += 30 + WIDGET_SPACING;
 		
 		fluidCurrentStrengthSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Current Strength: "),
 			Component.literal(""),
 			0, 1, currentValues.fluidCurrentStrength,
@@ -241,9 +285,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidCurrentStrengthSlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(fluidCurrentStrengthSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidBuoyancySlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Buoyancy: "),
 			Component.literal(""),
 			0, 1, currentValues.fluidBuoyancy,
@@ -253,10 +299,15 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidBuoyancySlider.active = canEdit;
+		scrollableWidgets.add(new WidgetEntry(fluidBuoyancySlider, y));
+		y += WIDGET_HEIGHT + SECTION_SPACING;
 		
-		// Fluid client section
+		// Fluid Visuals (Client) section
+		sectionHeaders.add(new SectionHeader("Fluid Visuals (Client)", y));
+		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
+		
 		fluidVisualsToggle = new Dex5ToggleButton(
-			leftX + widgetWidth / 2 - 90, 0, 180, 30,
+			centerX - 90, contentY, 180, 30,
 			Component.literal("Flowing Cubes"),
 			currentValues.fluidRenderStyle > 0,
 			button -> {
@@ -266,28 +317,28 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidVisualsToggle.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidVisualsToggle, y));
+		y += 30 + WIDGET_SPACING;
 		
 		cubesPerBlockSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Cubes Per Block: "),
 			Component.literal(""),
 			1, 27, currentValues.fluidCubesPerBlock,
 			value -> {
 				int v = value.intValue();
-				if (v <= 4) {
-					currentValues.fluidCubesPerBlock = 1;
-				} else if (v <= 17) {
-					currentValues.fluidCubesPerBlock = 8;
-				} else {
-					currentValues.fluidCubesPerBlock = 27;
-				}
+				if (v <= 4) currentValues.fluidCubesPerBlock = 1;
+				else if (v <= 17) currentValues.fluidCubesPerBlock = 8;
+				else currentValues.fluidCubesPerBlock = 27;
 				markDirty();
 			}
 		);
 		cubesPerBlockSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(cubesPerBlockSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidRenderRadiusSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Render Radius: "),
 			Component.literal(" blocks"),
 			4, 64, currentValues.fluidRenderRadius,
@@ -297,9 +348,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidRenderRadiusSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidRenderRadiusSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidMaxCubesSlider = new Dex5Slider(
-			leftX, 0, widgetWidth, WIDGET_HEIGHT,
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Max Cubes: "),
 			Component.literal(""),
 			256, 32768, currentValues.fluidMaxCubes,
@@ -309,9 +362,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidMaxCubesSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidMaxCubesSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidReplaceVanillaToggle = new Dex5ToggleButton(
-			leftX + widgetWidth / 2 - 90, 0, 180, WIDGET_HEIGHT,
+			centerX - 90, contentY, 180, WIDGET_HEIGHT,
 			Component.literal("Replace Vanilla Fluid"),
 			currentValues.fluidReplaceVanilla,
 			button -> {
@@ -321,43 +376,30 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			}
 		);
 		fluidReplaceVanillaToggle.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidReplaceVanillaToggle, y));
 	}
 	
-	private int calculateTotalContentHeight() {
-		int height = 0;
-		
-		// Main toggle
-		height += BIG_TOGGLE_HEIGHT + SECTION_SPACING;
-		
-		// Physics section
-		height += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		height += (WIDGET_HEIGHT + WIDGET_SPACING) * 4; // 4 sliders
-		height += SECTION_SPACING;
-		
-		// Debug section
-		height += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		height += WIDGET_HEIGHT + SECTION_SPACING;
-		
-		// Fluids (Server) section
-		height += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		height += 30 + WIDGET_SPACING; // Toggle
-		height += (WIDGET_HEIGHT + WIDGET_SPACING) * 2; // 2 sliders
-		height += SECTION_SPACING;
-		
-		// Fluid Visuals (Client) section
-		height += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		height += 30 + WIDGET_SPACING; // Toggle
-		height += (WIDGET_HEIGHT + WIDGET_SPACING) * 4; // 4 sliders/widgets
-		height += WIDGET_HEIGHT + SECTION_SPACING; // Replace vanilla toggle
-		
-		return height;
+	/**
+	 * Update widget Y positions and visibility based on current scroll offset.
+	 * This ensures hit-testing matches visual rendering.
+	 */
+	private void updateScrollableWidgetPositions() {
+		for (WidgetEntry entry : scrollableWidgets) {
+			int screenY = contentY + entry.baseY - (int)scrollOffset;
+			entry.widget.setY(screenY);
+			
+			// Widget is visible if it intersects the content viewport
+			boolean visible = screenY + entry.widget.getHeight() >= contentY && 
+			                  screenY <= contentY + contentHeight;
+			entry.widget.visible = visible;
+		}
 	}
 	
 	private void addFooterButtons() {
 		int buttonY = panelY + panelHeight - FOOTER_HEIGHT + (FOOTER_HEIGHT - BUTTON_HEIGHT) / 2;
 		int centerX = this.width / 2;
-		int buttonSpacing = 10;
-		int totalWidth = BUTTON_WIDTH * 3 + buttonSpacing * 2;
+		int spacing = 10;
+		int totalWidth = BUTTON_WIDTH * 3 + spacing * 2;
 		int startX = centerX - totalWidth / 2;
 		
 		resetButton = Button.builder(
@@ -373,7 +415,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			Component.literal("Save"),
 			button -> saveChanges()
 		)
-		.bounds(startX + BUTTON_WIDTH + buttonSpacing, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+		.bounds(startX + BUTTON_WIDTH + spacing, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
 		.build();
 		saveButton.active = canEdit && isDirty;
 		addRenderableWidget(saveButton);
@@ -382,16 +424,18 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			Component.literal("Cancel"),
 			button -> onClose()
 		)
-		.bounds(startX + (BUTTON_WIDTH + buttonSpacing) * 2, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+		.bounds(startX + (BUTTON_WIDTH + spacing) * 2, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
 		.build();
 		addRenderableWidget(cancelButton);
 	}
 	
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		// Only scroll if mouse is in content area
 		if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
 		    mouseY >= contentY && mouseY <= contentY + contentHeight) {
 			scrollOffset = Mth.clamp(scrollOffset - scrollY * 20, 0, maxScrollOffset);
+			updateScrollableWidgetPositions();
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -399,65 +443,40 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		// Check if click is within scrollable content area
-		if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
-		    mouseY >= contentY && mouseY <= contentY + contentHeight) {
-			
-			// Adjust mouse coordinates for scroll offset
-			double adjustedY = mouseY + scrollOffset;
-			
-			// Check each widget
-			if (checkWidgetClick(enabledToggle, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(radiusSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(maxActiveSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(updateIntervalSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(sleepVelocitySlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(debugToggle, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidsToggle, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidCurrentStrengthSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidBuoyancySlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidVisualsToggle, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(cubesPerBlockSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidRenderRadiusSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidMaxCubesSlider, mouseX, adjustedY, button)) return true;
-			if (checkWidgetClick(fluidReplaceVanillaToggle, mouseX, adjustedY, button)) return true;
-		}
-		
-		return super.mouseClicked(mouseX, mouseY, button);
-	}
-	
-	private boolean checkWidgetClick(net.minecraft.client.gui.components.AbstractWidget widget, 
-	                                  double mouseX, double mouseY, int button) {
-		if (widget != null && widget.active && 
-		    mouseX >= widget.getX() && mouseX <= widget.getX() + widget.getWidth() &&
-		    mouseY >= widget.getY() && mouseY <= widget.getY() + widget.getHeight()) {
-			widget.onClick(mouseX, mouseY);
+		// Check footer buttons first (they have priority)
+		if (super.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
+		
+		// Only handle scrollable widgets if click is in content area
+		if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
+		    mouseY >= contentY && mouseY <= contentY + contentHeight) {
+			// Check scrollable widgets (their positions are already updated)
+			for (WidgetEntry entry : scrollableWidgets) {
+				if (entry.widget.visible && entry.widget.active && entry.widget.mouseClicked(mouseX, mouseY, button)) {
+					return true;
+				}
+			}
+		}
+		
 		return false;
 	}
 	
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-		// Check if drag is within scrollable content area
-		if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
-		    mouseY >= contentY && mouseY <= contentY + contentHeight) {
-			
-			double adjustedY = mouseY + scrollOffset;
-			
-			// Check sliders for dragging
-			if (radiusSlider != null && radiusSlider.active) radiusSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (maxActiveSlider != null && maxActiveSlider.active) maxActiveSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (updateIntervalSlider != null && updateIntervalSlider.active) updateIntervalSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (sleepVelocitySlider != null && sleepVelocitySlider.active) sleepVelocitySlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (fluidCurrentStrengthSlider != null && fluidCurrentStrengthSlider.active) fluidCurrentStrengthSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (fluidBuoyancySlider != null && fluidBuoyancySlider.active) fluidBuoyancySlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (cubesPerBlockSlider != null && cubesPerBlockSlider.active) cubesPerBlockSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (fluidRenderRadiusSlider != null && fluidRenderRadiusSlider.active) fluidRenderRadiusSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
-			if (fluidMaxCubesSlider != null && fluidMaxCubesSlider.active) fluidMaxCubesSlider.mouseDragged(mouseX, adjustedY, button, dragX, dragY);
+		// Let footer buttons handle drag first
+		if (super.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
+			return true;
 		}
 		
-		return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+		// Check scrollable widgets
+		for (WidgetEntry entry : scrollableWidgets) {
+			if (entry.widget.visible && entry.widget.active && entry.widget.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
+				return true;
+			}
+		}
+		
+		return false;
 	}
 	
 	private void markDirty() {
@@ -532,34 +551,46 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		// Border
 		drawBorder(graphics, panelX, panelY, panelWidth, panelHeight, Dex5Colors.BORDER_ACCENT);
 		
-		// Title area
+		// Title
 		int titleY = panelY + 12;
 		graphics.drawCenteredString(this.font, this.title, this.width / 2, titleY, Dex5Colors.PRIMARY);
 		String subtitle = canEdit ? "Configure Lightweight Physics Settings" : "View Configuration (Read-Only)";
 		graphics.drawCenteredString(this.font, subtitle, this.width / 2, titleY + 12, Dex5Colors.TEXT_SECONDARY);
 		
-		// Enable scissor for scrollable content
+		// Enable scissor for content area
 		graphics.enableScissor(contentX, contentY, contentX + contentWidth, contentY + contentHeight);
 		
-		// Render scrollable content
-		renderScrollableContent(graphics, mouseX, mouseY);
+		// Render section headers
+		int centerX = contentX + contentWidth / 2;
+		for (SectionHeader header : sectionHeaders) {
+			int screenY = contentY + header.baseY - (int)scrollOffset;
+			if (screenY + SECTION_HEADER_HEIGHT >= contentY && screenY <= contentY + contentHeight) {
+				graphics.drawCenteredString(this.font, header.text, centerX, screenY + 6, Dex5Colors.ACCENT);
+			}
+		}
 		
-		// Disable scissor
+		// Render scrollable widgets (positions already updated)
+		for (WidgetEntry entry : scrollableWidgets) {
+			if (entry.widget.visible) {
+				entry.widget.render(graphics, mouseX, mouseY, partialTick);
+			}
+		}
+		
 		graphics.disableScissor();
 		
-		// Draw scrollbar
+		// Scrollbar
 		if (maxScrollOffset > 0) {
 			drawScrollbar(graphics);
 		}
 		
-		// Footer buttons (rendered by super.render)
+		// Footer buttons
 		super.render(graphics, mouseX, mouseY, partialTick);
 		
 		// Status message
 		if (!statusMessage.isEmpty()) {
 			long elapsed = System.currentTimeMillis() - statusTime;
 			if (elapsed < 3000) {
-				int alpha = elapsed < 2500 ? 255 : (int) (255 * (1 - (elapsed - 2500) / 500.0));
+				int alpha = elapsed < 2500 ? 255 : (int)(255 * (1 - (elapsed - 2500) / 500.0));
 				int color = (alpha << 24) | (statusColor & 0x00FFFFFF);
 				int statusY = panelY + panelHeight - FOOTER_HEIGHT - 8;
 				graphics.drawCenteredString(this.font, statusMessage, this.width / 2, statusY, color);
@@ -567,107 +598,20 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		}
 	}
 	
-	private void renderScrollableContent(GuiGraphics graphics, int mouseX, int mouseY) {
-		int y = contentY - (int)scrollOffset;
-		int widgetWidth = contentWidth - 40;
-		int leftX = contentX + 20;
-		int centerX = contentX + contentWidth / 2;
-		
-		// Main toggle
-		positionAndRender(enabledToggle, centerX - 100, y, graphics, mouseX, mouseY);
-		y += BIG_TOGGLE_HEIGHT + SECTION_SPACING;
-		
-		// Physics section
-		drawSectionHeader(graphics, centerX, y, "Physics");
-		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		
-		positionAndRender(radiusSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(maxActiveSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(updateIntervalSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(sleepVelocitySlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + SECTION_SPACING;
-		
-		// Debug section
-		drawSectionHeader(graphics, centerX, y, "Debug");
-		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		
-		positionAndRender(debugToggle, centerX - 80, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + SECTION_SPACING;
-		
-		// Fluids (Server) section
-		drawSectionHeader(graphics, centerX, y, "Fluids (Server)");
-		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		
-		positionAndRender(fluidsToggle, centerX - 100, y, graphics, mouseX, mouseY);
-		y += 30 + WIDGET_SPACING;
-		
-		positionAndRender(fluidCurrentStrengthSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(fluidBuoyancySlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + SECTION_SPACING;
-		
-		// Fluid Visuals (Client) section
-		drawSectionHeader(graphics, centerX, y, "Fluid Visuals (Client)");
-		y += SECTION_HEADER_HEIGHT + SECTION_SPACING;
-		
-		positionAndRender(fluidVisualsToggle, centerX - 90, y, graphics, mouseX, mouseY);
-		y += 30 + WIDGET_SPACING;
-		
-		positionAndRender(cubesPerBlockSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(fluidRenderRadiusSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(fluidMaxCubesSlider, leftX, y, graphics, mouseX, mouseY);
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		positionAndRender(fluidReplaceVanillaToggle, centerX - 90, y, graphics, mouseX, mouseY);
-	}
-	
-	private void positionAndRender(net.minecraft.client.gui.components.AbstractWidget widget, 
-	                                int x, int y, GuiGraphics graphics, int mouseX, int mouseY) {
-		if (widget == null) return;
-		
-		widget.setX(x);
-		widget.setY(y);
-		
-		// Only render if visible in content area
-		if (y + widget.getHeight() >= contentY && y <= contentY + contentHeight) {
-			// Adjust mouse position for widget hover detection
-			double adjustedMouseY = mouseY + scrollOffset;
-			widget.render(graphics, mouseX, (int)adjustedMouseY, 0);
-		}
-	}
-	
-	private void drawSectionHeader(GuiGraphics graphics, int centerX, int y, String text) {
-		// Only draw if visible
-		if (y + SECTION_HEADER_HEIGHT >= contentY && y <= contentY + contentHeight) {
-			graphics.drawCenteredString(this.font, text, centerX, y + 6, Dex5Colors.ACCENT);
-		}
-	}
-	
 	private void drawScrollbar(GuiGraphics graphics) {
 		int scrollbarWidth = 4;
 		int scrollbarX = contentX + contentWidth - scrollbarWidth - 2;
-		int scrollbarHeight = contentHeight;
 		
 		// Track
-		graphics.fill(scrollbarX, contentY, scrollbarX + scrollbarWidth, contentY + scrollbarHeight, 
-		              0x40FFFFFF);
+		graphics.fill(scrollbarX, contentY, scrollbarX + scrollbarWidth, contentY + contentHeight, 0x40FFFFFF);
 		
 		// Thumb
-		double thumbHeight = Math.max(20, scrollbarHeight * (contentHeight / (double)(contentHeight + maxScrollOffset)));
-		double thumbY = contentY + (scrollbarHeight - thumbHeight) * (scrollOffset / maxScrollOffset);
-		graphics.fill(scrollbarX, (int)thumbY, scrollbarX + scrollbarWidth, (int)(thumbY + thumbHeight), 
-		              Dex5Colors.PRIMARY);
+		int totalContentHeight = scrollableWidgets.isEmpty() ? contentHeight : 
+			scrollableWidgets.get(scrollableWidgets.size() - 1).baseY + 
+			scrollableWidgets.get(scrollableWidgets.size() - 1).widget.getHeight();
+		double thumbHeight = Math.max(20, contentHeight * (contentHeight / (double)totalContentHeight));
+		double thumbY = contentY + (contentHeight - thumbHeight) * (scrollOffset / maxScrollOffset);
+		graphics.fill(scrollbarX, (int)thumbY, scrollbarX + scrollbarWidth, (int)(thumbY + thumbHeight), Dex5Colors.PRIMARY);
 	}
 	
 	private void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
@@ -704,15 +648,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			int y = panelY + (panelHeight - watermarkSize) / 2;
 			
 			graphics.setColor(1.0f, 1.0f, 1.0f, WATERMARK_ALPHA);
-			
-			graphics.blit(
-				WATERMARK_TEXTURE,
-				x, y,
-				0, 0,
-				watermarkSize, watermarkSize,
-				watermarkSize, watermarkSize
-			);
-			
+			graphics.blit(WATERMARK_TEXTURE, x, y, 0, 0, watermarkSize, watermarkSize, watermarkSize, watermarkSize);
 			graphics.setColor(1.0f, 1.0f, 1.0f, 1.0f);
 		} catch (Exception e) {
 			// Silently ignore
@@ -721,8 +657,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	
 	private static boolean checkBranding() {
 		try {
-			Minecraft.getInstance().getResourceManager()
-				.getResource(WATERMARK_TEXTURE);
+			Minecraft.getInstance().getResourceManager().getResource(WATERMARK_TEXTURE);
 			return true;
 		} catch (Exception e) {
 			return false;
