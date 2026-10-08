@@ -1,28 +1,33 @@
 package com.crystaelix.simurail.client;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
-import com.crystaelix.simurail.client.fluid.FluidMesh;
 import com.crystaelix.simurail.config.SimurailConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.FluidState;
@@ -31,44 +36,49 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.client.model.data.ModelData;
 
 /**
- * Client-side renderer for floating fluid cubes.
+ * Client-side renderer for floating fluid debris using baked models.
  * Cubes float on the water surface, drift with the current, and follow waterfalls.
- * Vanilla fluids always render normally - cubes overlay on top.
+ * Vanilla fluids always render normally - debris overlays on top.
  */
 @OnlyIn(Dist.CLIENT)
 public class FluidCubeRenderer {
 
-	private static final List<FloatingCube> cubePool = new ArrayList<>();
+	private static final List<FloatingDebris> debrisPool = new ArrayList<>();
 	private static int tickCounter = 0;
 	private static int debugLogTimer = 0;
+	private static int columnScanIndex = 0;
+	
 	private static int lastSpawnAttempts = 0;
 	private static int lastSurfaceBlocksFound = 0;
-	private static int lastCubesRendered = 0;
+	private static int lastDebrisRendered = 0;
 	
-	private static FluidMesh cubeMesh;
-	private static FluidMesh dropletMesh;
-	private static FluidMesh tileMesh;
+	private static BakedModel cubeModel;
+	private static BakedModel dropletModel;
+	private static BakedModel tileModel;
+	private static boolean modelsLoaded = false;
 	
-	static {
-		cubeMesh = FluidMesh.createCube();
-		dropletMesh = FluidMesh.createDroplet();
-		tileMesh = FluidMesh.createTile();
-	}
+	private static boolean readmeWritten = false;
 
 	/**
-	 * Called every client tick to simulate and spawn cubes.
+	 * Called every client tick to simulate and spawn debris.
 	 */
 	public static void tick(Minecraft mc) {
+		if (mc.level == null || mc.player == null) {
+			debrisPool.clear();
+			return;
+		}
+		
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0 || mc.level == null || mc.player == null) {
-				cubePool.clear();
+			if (style == 0) {
+				debrisPool.clear();
 				return;
 			}
 		} catch (Exception e) {
-			cubePool.clear();
+			debrisPool.clear();
 			return;
 		}
 
@@ -76,54 +86,60 @@ public class FluidCubeRenderer {
 		debugLogTimer++;
 		Level level = mc.level;
 		
-		// Simulate existing cubes
-		cubePool.removeIf(cube -> !cube.tick(level));
+		// Simulate existing debris
+		debrisPool.removeIf(debris -> !debris.tick(level));
 		
-		// Spawn new cubes on surface blocks
-		if (tickCounter % 2 == 0) {
-			spawnCubesOnSurface(mc);
-		}
+		// Deterministic spawning: scan columns in a budgeted slice
+		spawnDebrisDeterministic(mc);
 		
 		// Debug logging every 5 seconds (100 ticks)
 		if (debugLogTimer >= 100) {
 			debugLogTimer = 0;
 			try {
-				if (SimurailConfig.server().physics.lightweightDebugLogging.get()) {
-					System.out.println("[Simurail FluidCubeRenderer] Active: " + cubePool.size() + 
+				if (SimurailConfig.client().fluidVisualsDebugLogging.get()) {
+					System.out.println("[Simurail FluidCubeRenderer] Active: " + debrisPool.size() + 
 						", SpawnAttempts: " + lastSpawnAttempts + 
 						", SurfaceFound: " + lastSurfaceBlocksFound + 
-						", LastRendered: " + lastCubesRendered);
+						", LastRendered: " + lastDebrisRendered);
 				}
 			} catch (Exception e) {
 			}
 		}
+		
+		// Write README on first run
+		if (!readmeWritten) {
+			writeReadme();
+			readmeWritten = true;
+		}
 	}
 
 	/**
-	 * Render all floating cubes with frustum culling and batching.
+	 * Render all floating debris with model-based rendering.
 	 */
-	public static void render(PoseStack poseStack, Camera camera, float partialTick, Frustum frustum) {
+	public static void render(PoseStack poseStack, Vec3 camPos, float partialTick, 
+	                          Frustum frustum, MultiBufferSource.BufferSource bufferSource) {
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0 || cubePool.isEmpty()) {
-				lastCubesRendered = 0;
+			if (style == 0 || debrisPool.isEmpty()) {
+				lastDebrisRendered = 0;
 				return;
 			}
 		} catch (Exception e) {
-			lastCubesRendered = 0;
+			lastDebrisRendered = 0;
 			return;
 		}
 
-		Vec3 camPos = camera.getPosition();
+		if (!modelsLoaded) {
+			loadModels();
+		}
+
 		Minecraft mc = Minecraft.getInstance();
-		MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-		
 		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
 		double radiusSq = renderRadius * renderRadius;
 		
 		int rendered = 0;
-		for (FloatingCube cube : cubePool) {
-			Vec3 renderPos = cube.getRenderPos(partialTick);
+		for (FloatingDebris debris : debrisPool) {
+			Vec3 renderPos = debris.getRenderPos(partialTick);
 			double dx = renderPos.x - camPos.x;
 			double dy = renderPos.y - camPos.y;
 			double dz = renderPos.z - camPos.z;
@@ -132,105 +148,189 @@ public class FluidCubeRenderer {
 				continue;
 			}
 			
+			// Inflated AABB for frustum culling
 			AABB box = new AABB(
-				renderPos.x - cube.size, renderPos.y - cube.size, renderPos.z - cube.size,
-				renderPos.x + cube.size, renderPos.y + cube.size, renderPos.z + cube.size
+				renderPos.x - debris.size * 1.5, renderPos.y - debris.size * 1.5, renderPos.z - debris.size * 1.5,
+				renderPos.x + debris.size * 1.5, renderPos.y + debris.size * 1.5, renderPos.z + debris.size * 1.5
 			);
 			
 			if (!frustum.isVisible(box)) {
 				continue;
 			}
 			
-			cube.render(poseStack, bufferSource, camPos, partialTick, mc.level);
+			debris.render(poseStack, bufferSource, camPos, partialTick, mc.level);
 			rendered++;
 		}
 		
-		lastCubesRendered = rendered;
-		bufferSource.endBatch();
+		lastDebrisRendered = rendered;
+		bufferSource.endBatch(RenderType.translucent());
+		bufferSource.endBatch(RenderType.cutout());
 	}
 
-	private static void spawnCubesOnSurface(Minecraft mc) {
-		FluidMesh currentMesh = getSelectedMesh();
-		int meshTriangles = currentMesh.getTriangleCount();
+	private static void spawnDebrisDeterministic(Minecraft mc) {
+		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
+		float density = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
+		int maxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
 		
-		int configMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
-		int maxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
-		int effectiveMaxCubes = Math.min(configMaxCubes, maxTriangles / Math.max(1, meshTriangles));
-		
-		if (cubePool.size() >= effectiveMaxCubes) {
+		if (debrisPool.size() >= maxCubes) {
 			lastSpawnAttempts = 0;
 			lastSurfaceBlocksFound = 0;
 			return;
 		}
 		
-		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
-		float density = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
 		BlockPos playerPos = mc.player.blockPosition();
 		Level level = mc.level;
 		
-		// Sample random surface blocks
-		int attempts = (int) (density * 16);
-		int surfaceFound = 0;
-		lastSpawnAttempts = attempts;
+		// Budget: scan up to 64 columns per tick
+		int columnsPerTick = 64;
+		int diameter = renderRadius * 2;
+		int totalColumns = diameter * diameter;
 		
-		for (int i = 0; i < attempts && cubePool.size() < effectiveMaxCubes; i++) {
-			int dx = level.random.nextInt(renderRadius * 2) - renderRadius;
-			int dy = level.random.nextInt(16) - 8;
-			int dz = level.random.nextInt(renderRadius * 2) - renderRadius;
+		int scanned = 0;
+		int surfaceFound = 0;
+		int spawned = 0;
+		
+		for (int i = 0; i < columnsPerTick && debrisPool.size() < maxCubes; i++) {
+			columnScanIndex = (columnScanIndex + 1) % totalColumns;
 			
-			BlockPos pos = playerPos.offset(dx, dy, dz);
-			FluidState fluidState = level.getFluidState(pos);
+			int localX = columnScanIndex % diameter;
+			int localZ = columnScanIndex / diameter;
+			int worldX = playerPos.getX() - renderRadius + localX;
+			int worldZ = playerPos.getZ() - renderRadius + localZ;
 			
-			if (fluidState.isEmpty()) {
-				continue;
+			// Find topmost fluid surface
+			BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(worldX, playerPos.getY() + 8, worldZ);
+			boolean found = false;
+			
+			for (int y = playerPos.getY() + 8; y >= playerPos.getY() - 8; y--) {
+				mutable.setY(y);
+				FluidState fluidState = level.getFluidState(mutable);
+				
+				if (!fluidState.isEmpty() && level.getFluidState(mutable.above()).isEmpty()) {
+					surfaceFound++;
+					found = true;
+					
+					// Spawn based on density probability
+					if (level.random.nextFloat() < density) {
+						float fluidHeight = fluidState.getHeight(level, mutable);
+						double surfaceY = mutable.getY() + fluidHeight;
+						
+						double x = mutable.getX() + level.random.nextDouble();
+						double z = mutable.getZ() + level.random.nextDouble();
+						
+						float size = 0.15f + level.random.nextFloat() * 0.15f;
+						int lifetime = 200 + level.random.nextInt(200);
+						
+						debrisPool.add(new FloatingDebris(
+							new Vec3(x, surfaceY, z),
+							fluidState,
+							mutable.immutable(),
+							size,
+							lifetime
+						));
+						spawned++;
+					}
+					break;
+				}
 			}
 			
-			// Only spawn on surface (air above)
-			if (!level.getFluidState(pos.above()).isEmpty()) {
-				continue;
-			}
-			
-			surfaceFound++;
-			
-			float fluidHeight = fluidState.getHeight(level, pos);
-			double surfaceY = pos.getY() + fluidHeight;
-			
-			// Random position on surface
-			double x = pos.getX() + level.random.nextDouble();
-			double z = pos.getZ() + level.random.nextDouble();
-			
-			// Random size (0.15 to 0.3 blocks)
-			float size = 0.15f + level.random.nextFloat() * 0.15f;
-			
-			// Random lifetime (10-20 seconds)
-			int lifetime = 200 + level.random.nextInt(200);
-			
-			cubePool.add(new FloatingCube(
-				new Vec3(x, surfaceY, z),
-				fluidState,
-				pos,
-				size,
-				lifetime
-			));
+			scanned++;
 		}
 		
+		lastSpawnAttempts = scanned;
 		lastSurfaceBlocksFound = surfaceFound;
 	}
 
-	private static FluidMesh getSelectedMesh() {
+	private static void loadModels() {
+		try {
+			Minecraft mc = Minecraft.getInstance();
+			cubeModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube")));
+			dropletModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet")));
+			tileModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile")));
+			modelsLoaded = true;
+		} catch (Exception e) {
+			System.err.println("[Simurail] Failed to load fluid debris models: " + e.getMessage());
+		}
+	}
+
+	private static BakedModel getSelectedModel() {
 		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 		return switch (style) {
-			case 1 -> cubeMesh;
-			case 2 -> dropletMesh;
-			case 3 -> tileMesh;
-			default -> cubeMesh;
+			case 1 -> cubeModel != null ? cubeModel : null;
+			case 2 -> dropletModel != null ? dropletModel : null;
+			case 3 -> tileModel != null ? tileModel : null;
+			default -> cubeModel;
 		};
 	}
 
+	private static void writeReadme() {
+		try {
+			Path configDir = Paths.get("config", "simurail");
+			Files.createDirectories(configDir);
+			
+			Path readmePath = configDir.resolve("README_fluid_models.txt");
+			if (!Files.exists(readmePath)) {
+				String readme = """
+					Fluid Debris Custom Models
+					===========================
+					
+					You can create custom fluid debris models using Blockbench and override them via resource pack.
+					
+					## Model Format
+					
+					Place your models at: assets/simurail/models/fluid_debris/<name>.json
+					
+					Use standard Blockbench JSON format with texture variable '#fluid':
+					
+					{
+					  "parent": "minecraft:block/block",
+					  "textures": {
+					    "particle": "#fluid",
+					    "all": "#fluid"
+					  },
+					  "elements": [
+					    // Your cube definitions here
+					  ]
+					}
+					
+					## OBJ Models (Optional)
+					
+					You can also use OBJ models via NeoForge's built-in loader:
+					
+					{
+					  "loader": "neoforge:obj",
+					  "model": "simurail:models/fluid_debris/custom.obj",
+					  "textures": {
+					    "fluid": "#fluid"
+					  }
+					}
+					
+					Note: Blender FBX export is NOT supported by Minecraft.
+					Convert FBX to OBJ before using (File > Export > Wavefront OBJ in Blender).
+					
+					## Resource Pack Override
+					
+					1. Create a resource pack with your model at the path above
+					2. Set 'debrisModel' in simurail-client.toml to your model location
+					3. Reload resources (F3+T)
+					
+					Built-in models: simurail:fluid_debris/cube, droplet, tile
+					""";
+				
+				Files.writeString(readmePath, readme);
+			}
+		} catch (IOException e) {
+			System.err.println("[Simurail] Failed to write README_fluid_models.txt: " + e.getMessage());
+		}
+	}
+
 	/**
-	 * A single floating cube on the water surface.
+	 * A single floating debris piece.
 	 */
-	private static class FloatingCube {
+	private static class FloatingDebris {
 		Vec3 pos;
 		Vec3 prevPos;
 		Vec3 velocity;
@@ -243,7 +343,7 @@ public class FluidCubeRenderer {
 		float rotationSpeed;
 		float bobPhase;
 
-		FloatingCube(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime) {
+		FloatingDebris(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime) {
 			this.pos = pos;
 			this.prevPos = pos;
 			this.velocity = Vec3.ZERO;
@@ -275,35 +375,26 @@ public class FluidCubeRenderer {
 			// Get target flow velocity
 			Vec3 targetFlow = currentFluid.getFlow(level, currentBlock).scale(0.05);
 			
-			// Check if falling (fluid below is falling or no surface)
+			// Check if falling
 			FluidState below = level.getFluidState(currentBlock.below());
 			boolean isFalling = below.isEmpty() || 
 				(below.is(FluidTags.WATER) && level.getFluidState(currentBlock.below().above()).isEmpty());
 			
 			if (isFalling) {
-				// Fall with gravity
 				velocity = velocity.add(0, -0.04, 0);
 			} else {
-				// Push toward flow with damping
 				velocity = velocity.scale(0.9).add(targetFlow.scale(0.1));
 				
-				// Target surface height
 				float fluidHeight = currentFluid.getHeight(level, currentBlock);
 				double targetY = currentBlock.getY() + fluidHeight;
-				
-				// Bob gently
 				double bob = Math.sin((age + bobPhase) * 0.1) * 0.02;
 				targetY += bob;
 				
-				// Smooth Y toward surface
 				double dy = (targetY - pos.y) * 0.1;
 				velocity = new Vec3(velocity.x, dy, velocity.z);
 			}
 			
-			// Apply velocity
 			pos = pos.add(velocity);
-			
-			// Rotate slowly
 			rotation.rotateY(rotationSpeed);
 			
 			return true;
@@ -319,20 +410,24 @@ public class FluidCubeRenderer {
 
 		void render(PoseStack poseStack, MultiBufferSource bufferSource, Vec3 camPos, 
 		            float partialTick, Level level) {
+			BakedModel model = getSelectedModel();
+			if (model == null) return;
+			
 			Vec3 renderPos = getRenderPos(partialTick);
 			
-			// Camera-relative position (the classic bug fix!)
+			// Camera-relative position
 			float x = (float) (renderPos.x - camPos.x);
 			float y = (float) (renderPos.y - camPos.y);
 			float z = (float) (renderPos.z - camPos.z);
 			
 			poseStack.pushPose();
 			poseStack.translate(x, y, z);
+			poseStack.scale(size, size, size);
 			poseStack.mulPose(rotation);
 			
+			// Get fluid texture
 			IClientFluidTypeExtensions fluidExtensions = IClientFluidTypeExtensions.of(fluidState);
 			ResourceLocation textureLocation = fluidExtensions.getStillTexture();
-			
 			TextureAtlasSprite sprite = Minecraft.getInstance()
 				.getTextureAtlas(TextureAtlas.LOCATION_BLOCKS)
 				.apply(textureLocation);
@@ -347,24 +442,46 @@ public class FluidCubeRenderer {
 				int r = (waterColor >> 16) & 0xFF;
 				int g = (waterColor >> 8) & 0xFF;
 				int b = waterColor & 0xFF;
-				color = (217 << 24) | (r << 16) | (g << 8) | b; // 85% alpha
+				int a = 217; // 85% alpha
+				color = (a << 24) | (r << 16) | (g << 8) | b;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			} else if (fluidState.is(FluidTags.LAVA)) {
-				color = (255 << 24) | (255 << 16) | (100 << 8) | 20;
+				color = 0xFFFF6414;
 				light = 0xF000F0;
-				// Use solid for lava to avoid shader issues
-				renderType = RenderType.solid();
+				renderType = RenderType.cutout();
 			} else {
-				color = (217 << 24) | (50 << 16) | (50 << 8) | 255;
+				color = 0xD93232FF;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			}
 			
 			VertexConsumer buffer = bufferSource.getBuffer(renderType);
-			FluidMesh mesh = getSelectedMesh();
-			Matrix4f matrix = poseStack.last().pose();
-			mesh.renderTextured(buffer, matrix, 0, 0, 0, size, sprite, color, light, 0, 0);
+			RandomSource random = RandomSource.create(42);
+			
+			// Render all quads from the baked model
+			for (Direction direction : Direction.values()) {
+				List<BakedQuad> quads = model.getQuads(null, direction, random, ModelData.EMPTY, renderType);
+				for (BakedQuad quad : quads) {
+					buffer.putBulkData(poseStack.last(), quad, 
+						(color >> 16 & 0xFF) / 255f,
+						(color >> 8 & 0xFF) / 255f,
+						(color & 0xFF) / 255f,
+						(color >> 24 & 0xFF) / 255f,
+						light, 0x00F000F0);
+				}
+			}
+			
+			// Render unculled quads
+			List<BakedQuad> unculledQuads = model.getQuads(null, null, random, ModelData.EMPTY, renderType);
+			for (BakedQuad quad : unculledQuads) {
+				buffer.putBulkData(poseStack.last(), quad, 
+					(color >> 16 & 0xFF) / 255f,
+					(color >> 8 & 0xFF) / 255f,
+					(color & 0xFF) / 255f,
+					(color >> 24 & 0xFF) / 255f,
+					light, 0x00F000F0);
+			}
 			
 			poseStack.popPose();
 		}

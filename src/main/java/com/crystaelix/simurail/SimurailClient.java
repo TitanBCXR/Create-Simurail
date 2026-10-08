@@ -13,17 +13,20 @@ import com.crystaelix.simurail.ponder.SimurailPonderPlugin;
 import net.createmod.catnip.config.ui.BaseConfigScreen;
 import net.createmod.ponder.foundation.PonderIndex;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.model.ModelResourceLocation;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 @Mod(value = Simurail.MOD_ID, dist = Dist.CLIENT)
 public class SimurailClient {
@@ -61,17 +64,34 @@ public class SimurailClient {
 		SimurailParticleProviders.register(event);
 	}
 
-	public void onClientTick(LevelTickEvent.Post event) {
+	@SubscribeEvent
+	public void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
+		// Register fluid debris models
+		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube")));
+		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet")));
+		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile")));
+	}
+
+	public void onClientTick(ClientTickEvent.Post event) {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.level != null && !mc.isPaused() && event.getLevel() == mc.level) {
+		if (mc.level != null && mc.player != null && !mc.isPaused()) {
 			FluidCubeRenderer.tick(mc);
 		}
 	}
 
 	public void onRenderLevel(RenderLevelStageEvent event) {
 		if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-			FluidCubeRenderer.render(event.getPoseStack(), event.getCamera(), 
-				event.getPartialTick().getGameTimeDeltaPartialTick(false), event.getFrustum());
+			Minecraft mc = Minecraft.getInstance();
+			FluidCubeRenderer.render(
+				event.getPoseStack(), 
+				event.getCamera().getPosition(), 
+				event.getPartialTick().getGameTimeDeltaPartialTick(false), 
+				event.getFrustum(),
+				mc.renderBuffers().bufferSource()
+			);
 		}
 	}
 }

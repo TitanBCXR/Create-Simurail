@@ -16,6 +16,7 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 	public final ConfigInt fluidVisualsMaxCubes = i(512, 64, 4096, "maxCubes", Comments.fluidVisualsMaxCubes);
 	public final ConfigInt fluidVisualsMaxTriangles = i(100000, 10000, 1000000, "maxTriangles", Comments.fluidVisualsMaxTriangles);
 	public final ConfigBool fluidVisualsReplaceVanilla = b(false, "replaceVanillaFluid", Comments.fluidVisualsReplaceVanilla);
+	public final ConfigBool fluidVisualsDebugLogging = b(false, "debugLogging", Comments.fluidVisualsDebugLogging);
 
 	public SimurailClientConfig() {
 	}
@@ -30,11 +31,12 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 		static String wheelSlipSparkDensity = "Multiplier on the amount of sparks spawned by slipping wheels of a Physics Bogie.";
 		static String wheelSlipSparkScale = "Multiplier on the size of the sparks spawned by slipping wheels of a Physics Bogie.";
 
-		static String fluidVisualsRenderStyle = "Fluid rendering style. 0=OFF, 1=CUBE (default), 2=DROPLET, 3=TILE. Cubes float on the water surface and drift with the current.";
+		static String fluidVisualsRenderStyle = "Fluid debris model. 0=OFF, 1=CUBE (default), 2=DROPLET, 3=TILE. Overridable via resource pack at assets/simurail/models/fluid_debris/<name>.json.";
 		static String fluidVisualsDensity = "Cubes per surface block. 0.25 = sparse, 0.5 = moderate (default), 1.0 = dense, 2.0+ = very dense.";
 		static String fluidVisualsRenderRadius = "Maximum distance in blocks to render floating cubes around the player.";
 		static String fluidVisualsMaxCubes = "Maximum number of cubes to render at once. Farthest cubes are removed first when limit is reached.";
 		static String fluidVisualsMaxTriangles = "Maximum total triangle count for all rendered fluid meshes. Reduces cube count automatically if mesh * cubes exceeds this budget.";
 		static String fluidVisualsReplaceVanilla = "Hide vanilla fluid rendering (not recommended). If false (default), cubes overlay on vanilla fluids.";
+		static String fluidVisualsDebugLogging = "Log fluid renderer diagnostics every 5 seconds (active cubes, spawn attempts, render count).";
 	}
 }

@@ -23,6 +23,7 @@ public class LightweightPhysicsConfigValues {
 	public int fluidMaxCubes;
 	public int fluidMaxTriangles;
 	public boolean fluidReplaceVanilla;
+	public boolean fluidDebugLogging;
 	
 	public LightweightPhysicsConfigValues() {
 	}
@@ -60,6 +61,7 @@ public class LightweightPhysicsConfigValues {
 		values.fluidMaxCubes = 512;
 		values.fluidMaxTriangles = 100000;
 		values.fluidReplaceVanilla = false;
+		values.fluidDebugLogging = false;
 		
 		return values;
 	}
@@ -85,6 +87,7 @@ public class LightweightPhysicsConfigValues {
 		this.fluidMaxCubes = other.fluidMaxCubes;
 		this.fluidMaxTriangles = other.fluidMaxTriangles;
 		this.fluidReplaceVanilla = other.fluidReplaceVanilla;
+		this.fluidDebugLogging = other.fluidDebugLogging;
 	}
 	
 	public void applyToConfig() {

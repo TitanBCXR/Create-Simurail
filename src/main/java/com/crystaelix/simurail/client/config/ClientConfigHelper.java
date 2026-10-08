@@ -21,6 +21,7 @@ public class ClientConfigHelper {
 		values.fluidMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
 		values.fluidMaxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
 		values.fluidReplaceVanilla = SimurailConfig.client().fluidVisualsReplaceVanilla.get();
+		values.fluidDebugLogging = SimurailConfig.client().fluidVisualsDebugLogging.get();
 	}
 	
 	public static void applyClientValues(LightweightPhysicsConfigValues values) {
@@ -30,6 +31,7 @@ public class ClientConfigHelper {
 		SimurailConfig.client().fluidVisualsMaxCubes.set(values.fluidMaxCubes);
 		SimurailConfig.client().fluidVisualsMaxTriangles.set(values.fluidMaxTriangles);
 		SimurailConfig.client().fluidVisualsReplaceVanilla.set(values.fluidReplaceVanilla);
+		SimurailConfig.client().fluidVisualsDebugLogging.set(values.fluidDebugLogging);
 	}
 }
 

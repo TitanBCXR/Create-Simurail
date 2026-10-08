@@ -35,6 +35,7 @@ public class ClientConfigBridge {
 			values.fluidMaxCubes = clientValues.fluidMaxCubes;
 			values.fluidMaxTriangles = clientValues.fluidMaxTriangles;
 			values.fluidReplaceVanilla = clientValues.fluidReplaceVanilla;
+			values.fluidDebugLogging = clientValues.fluidDebugLogging;
 		}
 	}
 	
