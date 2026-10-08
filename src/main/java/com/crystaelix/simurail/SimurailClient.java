@@ -1,7 +1,10 @@
 package com.crystaelix.simurail;
 
 import com.crystaelix.simurail.client.FluidCubeRenderer;
+import com.crystaelix.simurail.client.config.ClientConfigHelper;
 import com.crystaelix.simurail.client.config.LightweightPhysicsConfigScreen;
+import com.crystaelix.simurail.config.ClientConfigBridge;
+import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
 import com.crystaelix.simurail.content.SimurailInteractCallbacks;
 import com.crystaelix.simurail.content.SimurailPartialModels;
 import com.crystaelix.simurail.content.SimurailParticleProviders;
@@ -41,6 +44,16 @@ public class SimurailClient {
 	public void onClientSetup(FMLCommonSetupEvent event) {
 		SimurailPartialModels.register();
 		SimurailInteractCallbacks.register();
+		
+		// Register client config bridge (Supplier pattern, no reflection)
+		ClientConfigBridge.setClientAccessors(
+			() -> {
+				LightweightPhysicsConfigValues values = new LightweightPhysicsConfigValues();
+				ClientConfigHelper.loadClientValues(values);
+				return values;
+			},
+			ClientConfigHelper::applyClientValues
+		);
 	}
 
 	@SubscribeEvent

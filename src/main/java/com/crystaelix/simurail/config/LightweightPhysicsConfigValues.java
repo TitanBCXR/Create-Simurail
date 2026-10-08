@@ -132,26 +132,14 @@ public class LightweightPhysicsConfigValues {
 	}
 	
 	/**
-	 * Helper method that delegates to client-only class to avoid classloading client config on server.
-	 * The actual implementation is in ClientConfigHelper which is annotated @OnlyIn(Dist.CLIENT).
+	 * Helper method that delegates to client bridge (Supplier pattern, no reflection/classloading).
 	 */
 	private static void loadClientConfigValues(LightweightPhysicsConfigValues values) {
-		// This method body only executes on client, reflection ensures class isn't loaded on server
-		try {
-			Class<?> helperClass = Class.forName("com.crystaelix.simurail.client.config.ClientConfigHelper");
-			helperClass.getMethod("loadClientValues", LightweightPhysicsConfigValues.class).invoke(null, values);
-		} catch (Exception e) {
-			// Ignore on server
-		}
+		ClientConfigBridge.loadClientValues(values);
 	}
 	
 	private static void applyClientConfigValues(LightweightPhysicsConfigValues values) {
-		try {
-			Class<?> helperClass = Class.forName("com.crystaelix.simurail.client.config.ClientConfigHelper");
-			helperClass.getMethod("applyClientValues", LightweightPhysicsConfigValues.class).invoke(null, values);
-		} catch (Exception e) {
-			// Ignore on server
-		}
+		ClientConfigBridge.applyClientValues(values);
 	}
 	
 	public boolean validate() {
