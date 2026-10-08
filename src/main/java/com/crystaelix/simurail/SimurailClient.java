@@ -68,12 +68,18 @@ public class SimurailClient {
 	public void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
 		// Register fluid debris models (water variants)
 		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/ice_cube")));
+		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/packed_ice_cube")));
+		event.register(ModelResourceLocation.standalone(
 			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube")));
 		event.register(ModelResourceLocation.standalone(
 			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet")));
 		event.register(ModelResourceLocation.standalone(
 			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile")));
 		// Register lava variants
+		event.register(ModelResourceLocation.standalone(
+			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/ice_cube_lava")));
 		event.register(ModelResourceLocation.standalone(
 			ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube_lava")));
 		event.register(ModelResourceLocation.standalone(

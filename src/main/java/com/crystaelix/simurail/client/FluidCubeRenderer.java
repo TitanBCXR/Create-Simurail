@@ -19,8 +19,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.culling.Frustum;
-import net.minecraft.client.renderer.texture.TextureAtlas;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.BlockPos;
@@ -35,7 +33,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
 /**
@@ -55,9 +52,14 @@ public class FluidCubeRenderer {
 	private static int lastSurfaceBlocksFound = 0;
 	private static int lastDebrisRendered = 0;
 	
+	private static final float MODEL_NATIVE_EDGE = 4F / 16F;
+
+	private static BakedModel iceCubeModel;
+	private static BakedModel packedIceCubeModel;
 	private static BakedModel cubeModel;
 	private static BakedModel dropletModel;
 	private static BakedModel tileModel;
+	private static BakedModel iceCubeLavaModel;
 	private static BakedModel cubeLavaModel;
 	private static BakedModel dropletLavaModel;
 	private static BakedModel tileLavaModel;
@@ -166,8 +168,9 @@ public class FluidCubeRenderer {
 		}
 		
 		lastDebrisRendered = rendered;
-		bufferSource.endBatch(RenderType.translucent());
+		bufferSource.endBatch(RenderType.solid());
 		bufferSource.endBatch(RenderType.cutout());
+		bufferSource.endBatch(RenderType.translucent());
 	}
 
 	private static void spawnDebrisDeterministic(Minecraft mc) {
@@ -216,20 +219,25 @@ public class FluidCubeRenderer {
 					// Spawn based on density probability
 					if (level.random.nextFloat() < density) {
 						float fluidHeight = fluidState.getHeight(level, mutable);
+						// Center sits on the surface so the cube is half-submerged.
 						double surfaceY = mutable.getY() + fluidHeight;
 						
 						double x = mutable.getX() + level.random.nextDouble();
 						double z = mutable.getZ() + level.random.nextDouble();
 						
-						float size = 0.15f + level.random.nextFloat() * 0.15f;
+						float debrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
+						DebrisMotion motion = DebrisMotion.random(level.random);
+						float worldSize = debrisScale * motion.sizeVariation;
 						int lifetime = 200 + level.random.nextInt(200);
 						
 						debrisPool.add(new FloatingDebris(
 							new Vec3(x, surfaceY, z),
 							fluidState,
 							mutable.immutable(),
-							size,
-							lifetime
+							worldSize,
+							lifetime,
+							motion,
+							level.random.nextBoolean()
 						));
 						spawned++;
 					}
@@ -247,12 +255,18 @@ public class FluidCubeRenderer {
 	private static void loadModels() {
 		try {
 			Minecraft mc = Minecraft.getInstance();
+			iceCubeModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/ice_cube")));
+			packedIceCubeModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/packed_ice_cube")));
 			cubeModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube")));
 			dropletModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet")));
 			tileModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile")));
+			iceCubeLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/ice_cube_lava")));
 			cubeLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube_lava")));
 			dropletLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
@@ -265,21 +279,21 @@ public class FluidCubeRenderer {
 		}
 	}
 
-	private static BakedModel getSelectedModel(boolean isLava) {
+	private static BakedModel getSelectedModel(boolean isLava, boolean packedIce) {
 		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 		if (isLava) {
 			return switch (style) {
-				case 1 -> cubeLavaModel != null ? cubeLavaModel : null;
-				case 2 -> dropletLavaModel != null ? dropletLavaModel : null;
-				case 3 -> tileLavaModel != null ? tileLavaModel : null;
-				default -> cubeLavaModel;
+				case 1 -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
+				case 2 -> dropletLavaModel != null ? dropletLavaModel : cubeLavaModel;
+				case 3 -> tileLavaModel != null ? tileLavaModel : cubeLavaModel;
+				default -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
 			};
 		} else {
 			return switch (style) {
-				case 1 -> cubeModel != null ? cubeModel : null;
-				case 2 -> dropletModel != null ? dropletModel : null;
-				case 3 -> tileModel != null ? tileModel : null;
-				default -> cubeModel;
+				case 1 -> packedIce && packedIceCubeModel != null ? packedIceCubeModel : iceCubeModel;
+				case 2 -> dropletModel != null ? dropletModel : iceCubeModel;
+				case 3 -> tileModel != null ? tileModel : iceCubeModel;
+				default -> iceCubeModel;
 			};
 		}
 	}
@@ -335,7 +349,9 @@ public class FluidCubeRenderer {
 					2. Set 'debrisModel' in simurail-client.toml to your model location
 					3. Reload resources (F3+T)
 					
-					Built-in models: simurail:fluid_debris/cube, droplet, tile
+					Built-in models: simurail:fluid_debris/ice_cube, packed_ice_cube, cube, droplet, tile
+					Lava: ice_cube_lava (magma), cube_lava, droplet_lava, tile_lava
+					World size is set by client config debrisScale (PoseStack), not the JSON element size.
 					""";
 				
 				Files.writeString(readmePath, readme);
@@ -357,11 +373,12 @@ public class FluidCubeRenderer {
 		float size;
 		int lifetime;
 		int age;
-		Quaternionf rotation;
-		float rotationSpeed;
-		float bobPhase;
+		final DebrisMotion motion;
+		final boolean packedIce;
+		final Quaternionf renderRotation = new Quaternionf();
 
-		FloatingDebris(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime) {
+		FloatingDebris(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime,
+				DebrisMotion motion, boolean packedIce) {
 			this.pos = pos;
 			this.prevPos = pos;
 			this.velocity = Vec3.ZERO;
@@ -370,9 +387,8 @@ public class FluidCubeRenderer {
 			this.size = size;
 			this.lifetime = lifetime;
 			this.age = 0;
-			this.rotation = new Quaternionf();
-			this.rotationSpeed = (float) ((Math.random() - 0.5) * 0.02);
-			this.bobPhase = (float) (Math.random() * Math.PI * 2);
+			this.motion = motion;
+			this.packedIce = packedIce;
 		}
 
 		boolean tick(Level level) {
@@ -390,10 +406,10 @@ public class FluidCubeRenderer {
 				return false;
 			}
 			
-			// Get target flow velocity
-			Vec3 targetFlow = currentFluid.getFlow(level, currentBlock).scale(0.05);
+			Vec3 flow = currentFluid.getFlow(level, currentBlock);
+			float flowSpeed = (float) flow.length();
+			Vec3 targetFlow = flow.scale(0.05);
 			
-			// Check if falling
 			FluidState below = level.getFluidState(currentBlock.below());
 			boolean isFalling = below.isEmpty() || 
 				(below.is(FluidTags.WATER) && level.getFluidState(currentBlock.below().above()).isEmpty());
@@ -404,16 +420,15 @@ public class FluidCubeRenderer {
 				velocity = velocity.scale(0.9).add(targetFlow.scale(0.1));
 				
 				float fluidHeight = currentFluid.getHeight(level, currentBlock);
-				double targetY = currentBlock.getY() + fluidHeight;
-				double bob = Math.sin((age + bobPhase) * 0.1) * 0.02;
-				targetY += bob;
-				
+				double targetY = currentBlock.getY() + fluidHeight + motion.bobOffset(age, size);
 				double dy = (targetY - pos.y) * 0.1;
 				velocity = new Vec3(velocity.x, dy, velocity.z);
 			}
 			
 			pos = pos.add(velocity);
-			rotation.rotateY(rotationSpeed);
+			
+			float spinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
+			motion.tick(flowSpeed, spinSpeed);
 			
 			return true;
 		}
@@ -429,46 +444,56 @@ public class FluidCubeRenderer {
 		void render(PoseStack poseStack, MultiBufferSource bufferSource, Vec3 camPos, 
 		            float partialTick, Level level) {
 			boolean isLava = fluidState.is(FluidTags.LAVA);
-			BakedModel model = getSelectedModel(isLava);
+			BakedModel model = getSelectedModel(isLava, packedIce);
 			if (model == null) return;
 			
 			Vec3 renderPos = getRenderPos(partialTick);
 			
-			// Camera-relative position
 			float x = (float) (renderPos.x - camPos.x);
 			float y = (float) (renderPos.y - camPos.y);
 			float z = (float) (renderPos.z - camPos.z);
 			
 			poseStack.pushPose();
 			poseStack.translate(x, y, z);
-			poseStack.scale(size, size, size);
-			poseStack.mulPose(rotation);
-			
-			// Get fluid texture
-			IClientFluidTypeExtensions fluidExtensions = IClientFluidTypeExtensions.of(fluidState);
-			ResourceLocation textureLocation = fluidExtensions.getStillTexture();
-			TextureAtlasSprite sprite = Minecraft.getInstance()
-				.getTextureAtlas(TextureAtlas.LOCATION_BLOCKS)
-				.apply(textureLocation);
+			poseStack.mulPose(motion.interpolated(partialTick, renderRotation));
+			float poseScale = size / MODEL_NATIVE_EDGE;
+			poseStack.scale(poseScale, poseScale, poseScale);
+			poseStack.translate(-0.5F, -0.5F, -0.5F);
 			
 			int color;
 			int light;
 			RenderType renderType;
+			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 			
 			if (fluidState.is(FluidTags.WATER)) {
 				Biome biome = level.getBiome(originBlock).value();
 				int waterColor = biome.getWaterColor();
-				int r = (waterColor >> 16) & 0xFF;
-				int g = (waterColor >> 8) & 0xFF;
-				int b = waterColor & 0xFF;
-				int a = 217; // 85% alpha
+				int wr = (waterColor >> 16) & 0xFF;
+				int wg = (waterColor >> 8) & 0xFF;
+				int wb = waterColor & 0xFF;
+				int r;
+				int g;
+				int b;
+				int a;
+				if (style == 1) {
+					// Ice: mostly white with a slight biome water tint.
+					r = (255 * 3 + wr) / 4;
+					g = (255 * 3 + wg) / 4;
+					b = (255 * 3 + wb) / 4;
+					a = packedIce ? 230 : 200;
+				} else {
+					r = wr;
+					g = wg;
+					b = wb;
+					a = 217;
+				}
 				color = (a << 24) | (r << 16) | (g << 8) | b;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			} else if (fluidState.is(FluidTags.LAVA)) {
-				color = 0xFFFF6414;
+				color = 0xFFFFFFFF;
 				light = 0xF000F0;
-				renderType = RenderType.cutout();
+				renderType = style == 1 ? RenderType.solid() : RenderType.cutout();
 			} else {
 				color = 0xD93232FF;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));

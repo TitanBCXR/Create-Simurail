@@ -76,6 +76,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	// Widget references
 	private Dex5Slider radiusSlider, maxActiveSlider, updateIntervalSlider, sleepVelocitySlider;
 	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, fluidDensitySlider;
+	private Dex5Slider fluidDebrisScaleSlider, fluidDebrisSpinSpeedSlider;
 	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle;
 	
 	private static class WidgetEntry {
@@ -288,6 +289,36 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		scrollableWidgets.add(new WidgetEntry(fluidDensitySlider, y));
 		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
+		fluidDebrisScaleSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Debris Scale: "),
+			Component.literal(" blocks"),
+			0.1, 1.0, currentValues.fluidDebrisScale,
+			value -> {
+				currentValues.fluidDebrisScale = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidDebrisScaleSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidDebrisScaleSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		fluidDebrisSpinSpeedSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Spin Speed: "),
+			Component.literal("x"),
+			0.0, 2.0, currentValues.fluidDebrisSpinSpeed,
+			value -> {
+				currentValues.fluidDebrisSpinSpeed = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidDebrisSpinSpeedSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidDebrisSpinSpeedSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
 		fluidRenderRadiusSlider = new Dex5Slider(
 			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Render Radius: "),
@@ -460,6 +491,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (sleepVelocitySlider != null) sleepVelocitySlider.setValue(currentValues.sleepVelocity);
 		if (fluidVisualsToggle != null) fluidVisualsToggle.setState(currentValues.fluidRenderStyle > 0);
 		if (fluidDensitySlider != null) fluidDensitySlider.setValue(currentValues.fluidDensity);
+		if (fluidDebrisScaleSlider != null) fluidDebrisScaleSlider.setValue(currentValues.fluidDebrisScale);
+		if (fluidDebrisSpinSpeedSlider != null) fluidDebrisSpinSpeedSlider.setValue(currentValues.fluidDebrisSpinSpeed);
 		if (fluidRenderRadiusSlider != null) fluidRenderRadiusSlider.setValue(currentValues.fluidRenderRadius);
 		if (fluidMaxCubesSlider != null) fluidMaxCubesSlider.setValue(currentValues.fluidMaxCubes);
 	}
