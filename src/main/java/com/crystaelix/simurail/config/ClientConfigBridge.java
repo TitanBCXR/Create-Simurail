@@ -33,6 +33,11 @@ public class ClientConfigBridge {
 			values.fluidDensity = clientValues.fluidDensity;
 			values.fluidDebrisScale = clientValues.fluidDebrisScale;
 			values.fluidDebrisSpinSpeed = clientValues.fluidDebrisSpinSpeed;
+			values.fluidWaveAmplitude = clientValues.fluidWaveAmplitude;
+			values.fluidWaveLength = clientValues.fluidWaveLength;
+			values.fluidWaveSpeed = clientValues.fluidWaveSpeed;
+			values.fluidEntityInteraction = clientValues.fluidEntityInteraction;
+			values.fluidWakeStrength = clientValues.fluidWakeStrength;
 			values.fluidRenderRadius = clientValues.fluidRenderRadius;
 			values.fluidMaxCubes = clientValues.fluidMaxCubes;
 			values.fluidMaxTriangles = clientValues.fluidMaxTriangles;

@@ -19,6 +19,11 @@ public class ClientConfigHelper {
 		values.fluidDensity = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
 		values.fluidDebrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
 		values.fluidDebrisSpinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
+		values.fluidWaveAmplitude = SimurailConfig.client().fluidVisualsWaveAmplitude.get().floatValue();
+		values.fluidWaveLength = SimurailConfig.client().fluidVisualsWaveLength.get().floatValue();
+		values.fluidWaveSpeed = SimurailConfig.client().fluidVisualsWaveSpeed.get().floatValue();
+		values.fluidEntityInteraction = SimurailConfig.client().fluidVisualsEntityInteraction.get();
+		values.fluidWakeStrength = SimurailConfig.client().fluidVisualsWakeStrength.get().floatValue();
 		values.fluidRenderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
 		values.fluidMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
 		values.fluidMaxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
@@ -31,6 +36,11 @@ public class ClientConfigHelper {
 		SimurailConfig.client().fluidVisualsDensity.set((double) values.fluidDensity);
 		SimurailConfig.client().fluidVisualsDebrisScale.set((double) values.fluidDebrisScale);
 		SimurailConfig.client().fluidVisualsDebrisSpinSpeed.set((double) values.fluidDebrisSpinSpeed);
+		SimurailConfig.client().fluidVisualsWaveAmplitude.set((double) values.fluidWaveAmplitude);
+		SimurailConfig.client().fluidVisualsWaveLength.set((double) values.fluidWaveLength);
+		SimurailConfig.client().fluidVisualsWaveSpeed.set((double) values.fluidWaveSpeed);
+		SimurailConfig.client().fluidVisualsEntityInteraction.set(values.fluidEntityInteraction);
+		SimurailConfig.client().fluidVisualsWakeStrength.set((double) values.fluidWakeStrength);
 		SimurailConfig.client().fluidVisualsRenderRadius.set(values.fluidRenderRadius);
 		SimurailConfig.client().fluidVisualsMaxCubes.set(values.fluidMaxCubes);
 		SimurailConfig.client().fluidVisualsMaxTriangles.set(values.fluidMaxTriangles);

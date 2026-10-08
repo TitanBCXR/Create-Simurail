@@ -5,6 +5,7 @@ package com.crystaelix.simurail.config;
  */
 public enum FluidRenderStyle {
 	VANILLA("Vanilla (regular water)"),
+	CUBE("Water Cube"),
 	ICE_CUBE("Ice Cube"),
 	DROPLET("Droplet"),
 	TILE("Tile"),

@@ -17,10 +17,15 @@ public class LightweightPhysicsConfigValues {
 	public boolean debugLogging;
 	
 	// Client-side fluid visuals (all fluid settings are client-only)
-	public int fluidRenderStyle; // 0=OFF, 1=ICE_CUBE, 2=DROPLET, 3=TILE
+	public int fluidRenderStyle; // 0=OFF, 1=CUBE, 2=ICE_CUBE, 3=DROPLET
 	public float fluidDensity; // cubes per surface block
 	public float fluidDebrisScale; // world-space edge length in blocks
-	public float fluidDebrisSpinSpeed; // tumbling speed multiplier
+	public float fluidDebrisSpinSpeed; // roll multiplier
+	public float fluidWaveAmplitude;
+	public float fluidWaveLength;
+	public float fluidWaveSpeed;
+	public boolean fluidEntityInteraction;
+	public float fluidWakeStrength;
 	public int fluidRenderRadius;
 	public int fluidMaxCubes;
 	public int fluidMaxTriangles;
@@ -57,10 +62,15 @@ public class LightweightPhysicsConfigValues {
 		values.debugLogging = false;
 		
 		// Fluid visuals defaults (all client-side)
-		values.fluidRenderStyle = 1; // ICE_CUBE (default, not OFF)
+		values.fluidRenderStyle = 1; // CUBE / water wave
 		values.fluidDensity = 0.5f; // moderate
-		values.fluidDebrisScale = 0.4f;
+		values.fluidDebrisScale = 0.25f;
 		values.fluidDebrisSpinSpeed = 1.0f;
+		values.fluidWaveAmplitude = 0.25f;
+		values.fluidWaveLength = 3.0f;
+		values.fluidWaveSpeed = 1.0f;
+		values.fluidEntityInteraction = true;
+		values.fluidWakeStrength = 1.0f;
 		values.fluidRenderRadius = 16;
 		values.fluidMaxCubes = 512;
 		values.fluidMaxTriangles = 100000;
@@ -89,6 +99,11 @@ public class LightweightPhysicsConfigValues {
 		this.fluidDensity = other.fluidDensity;
 		this.fluidDebrisScale = other.fluidDebrisScale;
 		this.fluidDebrisSpinSpeed = other.fluidDebrisSpinSpeed;
+		this.fluidWaveAmplitude = other.fluidWaveAmplitude;
+		this.fluidWaveLength = other.fluidWaveLength;
+		this.fluidWaveSpeed = other.fluidWaveSpeed;
+		this.fluidEntityInteraction = other.fluidEntityInteraction;
+		this.fluidWakeStrength = other.fluidWakeStrength;
 		this.fluidRenderRadius = other.fluidRenderRadius;
 		this.fluidMaxCubes = other.fluidMaxCubes;
 		this.fluidMaxTriangles = other.fluidMaxTriangles;
@@ -133,6 +148,10 @@ public class LightweightPhysicsConfigValues {
 		       fluidDensity >= 0.1f && fluidDensity <= 4.0f &&
 		       fluidDebrisScale >= 0.1f && fluidDebrisScale <= 1.0f &&
 		       fluidDebrisSpinSpeed >= 0.0f && fluidDebrisSpinSpeed <= 2.0f &&
+		       fluidWaveAmplitude >= 0.0f && fluidWaveAmplitude <= 1.0f &&
+		       fluidWaveLength >= 1.0f && fluidWaveLength <= 8.0f &&
+		       fluidWaveSpeed >= 0.0f && fluidWaveSpeed <= 2.0f &&
+		       fluidWakeStrength >= 0.0f && fluidWakeStrength <= 2.0f &&
 		       fluidRenderRadius >= 4 && fluidRenderRadius <= 64 &&
 		       fluidMaxCubes >= 64 && fluidMaxCubes <= 4096 &&
 		       fluidMaxTriangles >= 10000 && fluidMaxTriangles <= 1000000;

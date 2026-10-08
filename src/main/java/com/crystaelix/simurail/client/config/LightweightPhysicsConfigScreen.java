@@ -77,7 +77,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private Dex5Slider radiusSlider, maxActiveSlider, updateIntervalSlider, sleepVelocitySlider;
 	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, fluidDensitySlider;
 	private Dex5Slider fluidDebrisScaleSlider, fluidDebrisSpinSpeedSlider;
-	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle;
+	private Dex5Slider fluidWaveAmplitudeSlider, fluidWaveLengthSlider, fluidWaveSpeedSlider, fluidWakeStrengthSlider;
+	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle, fluidEntityInteractionToggle;
 	
 	private static class WidgetEntry {
 		final AbstractWidget widget;
@@ -319,6 +320,80 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		scrollableWidgets.add(new WidgetEntry(fluidDebrisSpinSpeedSlider, y));
 		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
+		fluidWaveAmplitudeSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Wave Amplitude: "),
+			Component.literal(" blocks"),
+			0.0, 1.0, currentValues.fluidWaveAmplitude,
+			value -> {
+				currentValues.fluidWaveAmplitude = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidWaveAmplitudeSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidWaveAmplitudeSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		fluidWaveLengthSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Wave Length: "),
+			Component.literal(" blocks"),
+			1.0, 8.0, currentValues.fluidWaveLength,
+			value -> {
+				currentValues.fluidWaveLength = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidWaveLengthSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidWaveLengthSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		fluidWaveSpeedSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Wave Speed: "),
+			Component.literal("x"),
+			0.0, 2.0, currentValues.fluidWaveSpeed,
+			value -> {
+				currentValues.fluidWaveSpeed = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidWaveSpeedSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidWaveSpeedSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
+		fluidEntityInteractionToggle = new Dex5ToggleButton(
+			centerX - 90, contentY, 180, 30,
+			Component.literal("Entity Interaction"),
+			currentValues.fluidEntityInteraction,
+			button -> {
+				currentValues.fluidEntityInteraction = !currentValues.fluidEntityInteraction;
+				((Dex5ToggleButton) button).setState(currentValues.fluidEntityInteraction);
+				markDirty();
+			}
+		);
+		fluidEntityInteractionToggle.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidEntityInteractionToggle, y));
+		y += 30 + WIDGET_SPACING;
+		
+		fluidWakeStrengthSlider = new Dex5Slider(
+			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
+			Component.literal("Wake Strength: "),
+			Component.literal("x"),
+			0.0, 2.0, currentValues.fluidWakeStrength,
+			value -> {
+				currentValues.fluidWakeStrength = value.floatValue();
+				markDirty();
+			},
+			true
+		);
+		fluidWakeStrengthSlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidWakeStrengthSlider, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
+		
 		fluidRenderRadiusSlider = new Dex5Slider(
 			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Render Radius: "),
@@ -493,6 +568,11 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (fluidDensitySlider != null) fluidDensitySlider.setValue(currentValues.fluidDensity);
 		if (fluidDebrisScaleSlider != null) fluidDebrisScaleSlider.setValue(currentValues.fluidDebrisScale);
 		if (fluidDebrisSpinSpeedSlider != null) fluidDebrisSpinSpeedSlider.setValue(currentValues.fluidDebrisSpinSpeed);
+		if (fluidWaveAmplitudeSlider != null) fluidWaveAmplitudeSlider.setValue(currentValues.fluidWaveAmplitude);
+		if (fluidWaveLengthSlider != null) fluidWaveLengthSlider.setValue(currentValues.fluidWaveLength);
+		if (fluidWaveSpeedSlider != null) fluidWaveSpeedSlider.setValue(currentValues.fluidWaveSpeed);
+		if (fluidEntityInteractionToggle != null) fluidEntityInteractionToggle.setState(currentValues.fluidEntityInteraction);
+		if (fluidWakeStrengthSlider != null) fluidWakeStrengthSlider.setValue(currentValues.fluidWakeStrength);
 		if (fluidRenderRadiusSlider != null) fluidRenderRadiusSlider.setValue(currentValues.fluidRenderRadius);
 		if (fluidMaxCubesSlider != null) fluidMaxCubesSlider.setValue(currentValues.fluidMaxCubes);
 	}

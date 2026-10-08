@@ -38,9 +38,14 @@ public final class DebrisMotion {
 			(rng.nextFloat() - 0.5F) * 2F * angSpeed
 		);
 		motion.bobPhase = rng.nextFloat() * (float) Math.PI * 2F;
-		// ±25% world-size variation
-		motion.sizeVariation = 0.75F + rng.nextFloat() * 0.5F;
+		// Tight size variation so a wave field stays coherent.
+		motion.sizeVariation = 0.90F + rng.nextFloat() * 0.20F;
 		return motion;
+	}
+
+	public void setWaveRotation(Quaternionf wave) {
+		prevRotation.set(rotation);
+		rotation.set(wave);
 	}
 
 	public void tick(float flowSpeed, float spinSpeedMultiplier) {

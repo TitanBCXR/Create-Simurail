@@ -6,8 +6,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.joml.Quaternionf;
 
@@ -56,7 +58,13 @@ public class FluidCubeRenderer {
 	private static int lastDebrisRendered = 0;
 	private static int collisionsThisSecond = 0;
 	private static int despawnsThisSecond = 0;
+	private static int entityContactsThisSecond = 0;
 	private static int collisionLogTimer = 0;
+	
+	private static final DebrisOccupants occupants = new DebrisOccupants();
+	private static Vec3 playerPosThisTick = Vec3.ZERO;
+	private static final Set<Long> occupiedSlots = new HashSet<>();
+	private static final Quaternionf WAVE_ROLL = new Quaternionf();
 	
 	private static final float WALL_BOUNCE = 0.35F;
 	private static final float GRAVITY = 0.04F;
@@ -102,13 +110,28 @@ public class FluidCubeRenderer {
 		debugLogTimer++;
 		collisionLogTimer++;
 		Level level = mc.level;
+		playerPosThisTick = mc.player.position();
+		
+		boolean entityInteraction = SimurailConfig.client().fluidVisualsEntityInteraction.get();
+		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
+		if (entityInteraction) {
+			occupants.gather(level, playerPosThisTick, renderRadius);
+			occupants.emitWakes(SimurailConfig.client().fluidVisualsWakeStrength.get().floatValue());
+		} else {
+			occupants.occupants.clear();
+			occupants.cells.clear();
+			occupants.wakes.clear();
+		}
 		
 		debrisPool.removeIf(debris -> {
-			boolean alive = debris.tick(level);
-			if (!alive) {
-				despawnsThisSecond++;
+			if (debris.tick(level)) {
+				return false;
 			}
-			return !alive;
+			if (debris.tryWrapUpstream(level, renderRadius)) {
+				return false;
+			}
+			despawnsThisSecond++;
+			return true;
 		});
 		
 		separateDebris();
@@ -118,12 +141,14 @@ public class FluidCubeRenderer {
 			try {
 				if (SimurailConfig.client().fluidVisualsDebugLogging.get()) {
 					System.out.println("[Simurail FluidCubeRenderer] collisions=" + collisionsThisSecond
-						+ "/s despawns=" + despawnsThisSecond + "/s active=" + debrisPool.size());
+						+ "/s despawns=" + despawnsThisSecond + "/s entityContacts=" + entityContactsThisSecond
+						+ "/s active=" + debrisPool.size());
 				}
 			} catch (Exception e) {
 			}
 			collisionsThisSecond = 0;
 			despawnsThisSecond = 0;
+			entityContactsThisSecond = 0;
 			collisionLogTimer = 0;
 		}
 		
@@ -207,6 +232,11 @@ public class FluidCubeRenderer {
 		float density = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
 		int maxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
 		
+		occupiedSlots.clear();
+		for (FloatingDebris debris : debrisPool) {
+			occupiedSlots.add(debris.slotKey());
+		}
+		
 		if (debrisPool.size() >= maxCubes) {
 			lastSpawnAttempts = 0;
 			lastSurfaceBlocksFound = 0;
@@ -216,14 +246,12 @@ public class FluidCubeRenderer {
 		BlockPos playerPos = mc.player.blockPosition();
 		Level level = mc.level;
 		
-		// Budget: scan up to 64 columns per tick
 		int columnsPerTick = 64;
 		int diameter = renderRadius * 2;
-		int totalColumns = diameter * diameter;
+		int totalColumns = Math.max(1, diameter * diameter);
 		
 		int scanned = 0;
 		int surfaceFound = 0;
-		int spawned = 0;
 		
 		for (int i = 0; i < columnsPerTick && debrisPool.size() < maxCubes; i++) {
 			columnScanIndex = (columnScanIndex + 1) % totalColumns;
@@ -233,9 +261,7 @@ public class FluidCubeRenderer {
 			int worldX = playerPos.getX() - renderRadius + localX;
 			int worldZ = playerPos.getZ() - renderRadius + localZ;
 			
-			// Find topmost fluid surface
 			BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(worldX, playerPos.getY() + 8, worldZ);
-			boolean found = false;
 			
 			for (int y = playerPos.getY() + 8; y >= playerPos.getY() - 8; y--) {
 				mutable.setY(y);
@@ -243,38 +269,46 @@ public class FluidCubeRenderer {
 				
 				if (!fluidState.isEmpty() && level.getFluidState(mutable.above()).isEmpty()) {
 					surfaceFound++;
-					found = true;
 					
-					if (level.random.nextFloat() < density) {
-						float debrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
-						boolean spawnedHere = false;
-						for (int attempt = 0; attempt < 3 && !spawnedHere; attempt++) {
-							DebrisMotion motion = DebrisMotion.random(level.random);
-							float worldSize = debrisScale * motion.sizeVariation;
-							float half = DebrisWorldQuery.collisionHalf(worldSize);
-							double inset = Math.min(0.45, Math.max(0.08, 0.5 - half));
-							double x = mutable.getX() + 0.5 + (level.random.nextDouble() - 0.5) * 2.0 * inset;
-							double z = mutable.getZ() + 0.5 + (level.random.nextDouble() - 0.5) * 2.0 * inset;
-							double surfaceY = mutable.getY() + fluidState.getHeight(level, mutable);
-							double spawnY = surfaceY + DebrisWorldQuery.submergeOffset(worldSize);
-							
-							if (!DebrisWorldQuery.cubeFits(level, x, spawnY, z, worldSize)) {
-								continue;
-							}
-							
-							int lifetime = 200 + level.random.nextInt(200);
-							debrisPool.add(new FloatingDebris(
-								new Vec3(x, spawnY, z),
-								fluidState,
-								mutable.immutable(),
-								worldSize,
-								lifetime,
-								motion,
-								level.random.nextBoolean()
-							));
-							spawned++;
-							spawnedHere = true;
+					int count = DebrisWaveField.cubesForDensity(density, level.random);
+					float debrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
+					for (int slot = 0; slot < count && debrisPool.size() < maxCubes; slot++) {
+						long key = BlockPos.asLong(worldX, slot, worldZ);
+						if (occupiedSlots.contains(key)) {
+							continue;
 						}
+						DebrisMotion motion = DebrisMotion.random(level.random);
+						float worldSize = debrisScale * motion.sizeVariation;
+						double[] offset = DebrisWaveField.slotOffsets(slot, Math.max(1, count));
+						double jitterX = (level.random.nextDouble() - 0.5) * 0.18;
+						double jitterZ = (level.random.nextDouble() - 0.5) * 0.18;
+						double x = mutable.getX() + offset[0] + jitterX;
+						double z = mutable.getZ() + offset[1] + jitterZ;
+						double surfaceY = mutable.getY() + fluidState.getHeight(level, mutable);
+						double spawnY = surfaceY + DebrisWorldQuery.submergeOffset(worldSize);
+						
+						if (!DebrisWorldQuery.cubeFits(level, x, spawnY, z, worldSize)) {
+							continue;
+						}
+						if (SimurailConfig.client().fluidVisualsEntityInteraction.get()
+								&& occupants.insideAny(x, spawnY, z, worldSize)) {
+							continue;
+						}
+						
+						int lifetime = 400 + level.random.nextInt(400);
+						debrisPool.add(new FloatingDebris(
+							new Vec3(x, spawnY, z),
+							fluidState,
+							mutable.immutable(),
+							worldSize,
+							lifetime,
+							motion,
+							level.random.nextBoolean(),
+							slot,
+							worldX,
+							worldZ
+						));
+						occupiedSlots.add(key);
 					}
 					break;
 				}
@@ -376,17 +410,17 @@ public class FluidCubeRenderer {
 		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 		if (isLava) {
 			return switch (style) {
-				case 1 -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
-				case 2 -> dropletLavaModel != null ? dropletLavaModel : cubeLavaModel;
-				case 3 -> tileLavaModel != null ? tileLavaModel : cubeLavaModel;
-				default -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
+				case 1 -> cubeLavaModel;
+				case 2 -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
+				case 3 -> dropletLavaModel != null ? dropletLavaModel : cubeLavaModel;
+				default -> cubeLavaModel;
 			};
 		} else {
 			return switch (style) {
-				case 1 -> packedIce && packedIceCubeModel != null ? packedIceCubeModel : iceCubeModel;
-				case 2 -> dropletModel != null ? dropletModel : iceCubeModel;
-				case 3 -> tileModel != null ? tileModel : iceCubeModel;
-				default -> iceCubeModel;
+				case 1 -> cubeModel;
+				case 2 -> packedIce && packedIceCubeModel != null ? packedIceCubeModel : iceCubeModel;
+				case 3 -> dropletModel != null ? dropletModel : cubeModel;
+				default -> cubeModel;
 			};
 		}
 	}
@@ -469,9 +503,13 @@ public class FluidCubeRenderer {
 		final DebrisMotion motion;
 		final boolean packedIce;
 		final Quaternionf renderRotation = new Quaternionf();
+		final float phaseJitter;
+		int slot;
+		int slotX;
+		int slotZ;
 
 		FloatingDebris(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime,
-				DebrisMotion motion, boolean packedIce) {
+				DebrisMotion motion, boolean packedIce, int slot, int slotX, int slotZ) {
 			this.pos = pos;
 			this.prevPos = pos;
 			this.velocity = Vec3.ZERO;
@@ -482,6 +520,14 @@ public class FluidCubeRenderer {
 			this.age = 0;
 			this.motion = motion;
 			this.packedIce = packedIce;
+			this.slot = slot;
+			this.slotX = slotX;
+			this.slotZ = slotZ;
+			this.phaseJitter = motion.bobPhase * 0.15F;
+		}
+
+		long slotKey() {
+			return BlockPos.asLong(slotX, slot, slotZ);
 		}
 
 		boolean tick(Level level) {
@@ -504,9 +550,9 @@ public class FluidCubeRenderer {
 			Vec3 flow = fluidState.getFlow(level, originBlock);
 			float flowSpeed = (float) flow.length();
 			velocity = new Vec3(
-				velocity.x * 0.9 + flow.x * 0.005,
+				velocity.x * 0.88 + flow.x * 0.02,
 				velocity.y,
-				velocity.z * 0.9 + flow.z * 0.005
+				velocity.z * 0.88 + flow.z * 0.02
 			);
 			
 			AABB box = DebrisWorldQuery.cubeBox(pos.x, pos.y, pos.z, size);
@@ -550,18 +596,30 @@ public class FluidCubeRenderer {
 			fluidState = surface.fluid();
 			originBlock = surface.pos();
 			
+			Vec3 flowNow = fluidState.getFlow(level, originBlock);
+			float flowNowSpeed = (float) flowNow.length();
+			Vec3 waveDir = DebrisWaveField.waveDirection(flowNow);
+			float waveAmp = SimurailConfig.client().fluidVisualsWaveAmplitude.get().floatValue();
+			float waveLen = SimurailConfig.client().fluidVisualsWaveLength.get().floatValue();
+			float waveSpd = SimurailConfig.client().fluidVisualsWaveSpeed.get().floatValue();
+			double phase = DebrisWaveField.phase(pos.x, pos.z, waveDir, flowNowSpeed, tickCounter,
+				phaseJitter, waveLen, waveSpd);
+			double waveH = DebrisWaveField.height(phase, waveAmp, flowNowSpeed);
+			if (SimurailConfig.client().fluidVisualsEntityInteraction.get()) {
+				waveH += occupants.wakeHeight(pos.x, pos.z, waveLen);
+			}
+			
 			double restingY = surface.y() + DebrisWorldQuery.submergeOffset(size);
-			float bobAmp = DebrisWorldQuery.bobAmplitude(size);
-			double bob = motion.bobOffset(age, size);
-			double floatY = Math.max(restingY + bob, restingY - bobAmp);
-			boolean falling = DebrisWorldQuery.isDrop(surface, pos.y) || pos.y > restingY + 0.5;
+			float floorAmp = Math.max(DebrisWorldQuery.bobAmplitude(size), waveAmp);
+			double floatY = restingY + waveH;
+			boolean falling = DebrisWorldQuery.isDrop(surface, pos.y) || pos.y > restingY + 0.5 + waveAmp;
 			
 			if (falling) {
 				velocity = new Vec3(velocity.x, Math.max(velocity.y - GRAVITY, -TERMINAL_VELOCITY), velocity.z);
 			} else if (pos.y < restingY - 0.25) {
 				velocity = new Vec3(velocity.x, Math.max(velocity.y, 0.08), velocity.z);
 			} else {
-				velocity = new Vec3(velocity.x, (floatY - pos.y) * 0.25, velocity.z);
+				velocity = new Vec3(velocity.x, (floatY - pos.y) * 0.35, velocity.z);
 			}
 			
 			box = DebrisWorldQuery.cubeBox(pos.x, pos.y, pos.z, size);
@@ -578,16 +636,69 @@ public class FluidCubeRenderer {
 			}
 			pos = new Vec3(pos.x, pos.y + clippedY, pos.z);
 			
-			if (pos.y < restingY - bobAmp) {
-				pos = new Vec3(pos.x, restingY - bobAmp, pos.z);
+			if (pos.y < restingY - floorAmp) {
+				pos = new Vec3(pos.x, restingY - floorAmp, pos.z);
 				if (velocity.y < 0) {
 					velocity = new Vec3(velocity.x, 0, velocity.z);
 				}
 			}
 			
-			float spinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
-			motion.tick(flowSpeed, spinSpeed);
+			if (SimurailConfig.client().fluidVisualsEntityInteraction.get()) {
+				Vec3[] posHolder = { pos };
+				Vec3[] velHolder = { velocity };
+				int contacts = occupants.pushOut(posHolder, velHolder, size);
+				if (contacts > 0) {
+					entityContactsThisSecond += contacts;
+					pos = posHolder[0];
+					velocity = velHolder[0];
+				}
+			}
 			
+			float spinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
+			DebrisWaveField.rollRotation(WAVE_ROLL, waveDir, phase, spinSpeed);
+			motion.setWaveRotation(WAVE_ROLL);
+			
+			double dxPlayer = pos.x - playerPosThisTick.x;
+			double dzPlayer = pos.z - playerPosThisTick.z;
+			int radius = SimurailConfig.client().fluidVisualsRenderRadius.get();
+			if (dxPlayer * dxPlayer + dzPlayer * dzPlayer > (double) radius * radius) {
+				return false;
+			}
+			
+			return true;
+		}
+
+		boolean tryWrapUpstream(Level level, int radius) {
+			Vec3 dir = DebrisWaveField.waveDirection(fluidState.getFlow(level, originBlock));
+			double tx = playerPosThisTick.x - dir.x * radius * 0.85;
+			double tz = playerPosThisTick.z - dir.z * radius * 0.85;
+			DebrisWorldQuery.Surface surface = DebrisWorldQuery.findTopFluidInColumn(
+				level, Mth.floor(tx), Mth.floor(tz), Mth.floor(playerPosThisTick.y));
+			if (surface == null) {
+				for (int ox = -2; ox <= 2 && surface == null; ox++) {
+					for (int oz = -2; oz <= 2 && surface == null; oz++) {
+						surface = DebrisWorldQuery.findTopFluidInColumn(
+							level, Mth.floor(tx) + ox, Mth.floor(tz) + oz, Mth.floor(playerPosThisTick.y));
+					}
+				}
+			}
+			if (surface == null) {
+				return false;
+			}
+			double spawnY = surface.y() + DebrisWorldQuery.submergeOffset(size);
+			double x = surface.pos().getX() + 0.5;
+			double z = surface.pos().getZ() + 0.5;
+			if (!DebrisWorldQuery.cubeFits(level, x, spawnY, z, size)) {
+				return false;
+			}
+			pos = new Vec3(x, spawnY, z);
+			prevPos = pos;
+			velocity = Vec3.ZERO;
+			fluidState = surface.fluid();
+			originBlock = surface.pos();
+			age = 0;
+			slotX = surface.pos().getX();
+			slotZ = surface.pos().getZ();
 			return true;
 		}
 
@@ -606,6 +717,10 @@ public class FluidCubeRenderer {
 			if (model == null) return;
 			
 			Vec3 renderPos = getRenderPos(partialTick);
+			if (SimurailConfig.client().fluidVisualsEntityInteraction.get()
+					&& occupants.insideAny(renderPos.x, renderPos.y, renderPos.z, size)) {
+				return;
+			}
 			
 			float x = (float) (renderPos.x - camPos.x);
 			float y = (float) (renderPos.y - camPos.y);
@@ -633,8 +748,7 @@ public class FluidCubeRenderer {
 				int g;
 				int b;
 				int a;
-				if (style == 1) {
-					// Ice: mostly white with a slight biome water tint.
+				if (style == 2) {
 					r = (255 * 3 + wr) / 4;
 					g = (255 * 3 + wg) / 4;
 					b = (255 * 3 + wb) / 4;
@@ -643,7 +757,7 @@ public class FluidCubeRenderer {
 					r = wr;
 					g = wg;
 					b = wb;
-					a = 217;
+					a = 200;
 				}
 				color = (a << 24) | (r << 16) | (g << 8) | b;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
@@ -651,7 +765,7 @@ public class FluidCubeRenderer {
 			} else if (fluidState.is(FluidTags.LAVA)) {
 				color = 0xFFFFFFFF;
 				light = 0xF000F0;
-				renderType = style == 1 ? RenderType.solid() : RenderType.cutout();
+				renderType = style == 2 ? RenderType.solid() : RenderType.cutout();
 			} else {
 				color = 0xD93232FF;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
