@@ -56,6 +56,15 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 	public final ConfigFloat couplerSpringFrequency = f(100, 0, Short.MAX_VALUE, "springFrequency", Units.angularVelocity, Comments.couplerSpringFrequency);
 	public final ConfigFloat couplerSpringDampingRate = f(2, 0, Short.MAX_VALUE, "springDampingRate", Comments.couplerSpringDampingRate);
 
+	public final ConfigGroup lightweight = group(1, "lightweight", "Lightweight Physics");
+	public final ConfigBool lightweightEnabled = b(true, "enabled", Comments.lightweightEnabled);
+	public final ConfigFloat lightweightActivationRadius = f(32, 0, 256, "activationRadius", Units.length, Comments.lightweightActivationRadius);
+	public final ConfigInt lightweightMaxActive = i(256, 0, 2048, "maxActive", Comments.lightweightMaxActive);
+	public final ConfigFloat lightweightSleepVelocity = f(0.05F, 0, 10, "sleepVelocity", Units.velocity, Comments.lightweightSleepVelocity);
+	public final ConfigFloat lightweightMassScale = f(0.1F, 0, 10, "massScale", Comments.lightweightMassScale);
+	public final ConfigFloat lightweightFrictionScale = f(0.5F, 0, 2, "frictionScale", Comments.lightweightFrictionScale);
+	public final ConfigInt lightweightUpdateInterval = i(4, 1, 20, "updateInterval", Comments.lightweightUpdateInterval);
+
 	@Override
 	public String getName() {
 		return "physics";
@@ -108,5 +117,13 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 		static String couplerPassiveAngularDamping = "Passive angular damping between a Train Coupler and its partner.";
 		static String couplerSpringFrequency = "Spring frequency between a Train Coupler and its partner.";
 		static String couplerSpringDampingRate = "Spring damping rate between a Train Coupler and its partner.";
+
+		static String lightweightEnabled = "Enable lightweight physics for small objects (items, entities, cargo) without requiring full multiblock structures.";
+		static String lightweightActivationRadius = "Maximum distance from a physics body (bogey, train) at which lightweight physics objects will activate.";
+		static String lightweightMaxActive = "Maximum number of lightweight physics objects that can be active simultaneously. Oldest/farthest objects deactivate first.";
+		static String lightweightSleepVelocity = "Velocity threshold below which lightweight physics objects enter sleep mode to save performance.";
+		static String lightweightMassScale = "Mass multiplier for lightweight physics objects. Lower values make objects lighter and more responsive.";
+		static String lightweightFrictionScale = "Friction multiplier for lightweight physics objects when interacting with surfaces.";
+		static String lightweightUpdateInterval = "Number of ticks between lightweight physics activation checks. Higher values save performance but reduce responsiveness.";
 	}
 }

@@ -24,6 +24,7 @@
 		"TravellingPointMixin",
 
 		"SubLevelEntityCollisionMixin",
+		"ItemEntityPhysicsMixin",
 
 		"compat.copycats.CopycatAutomaticCouplerBlockMixin",
 		"compat.electroenergetics.AutomaticCouplerBlockMixin",

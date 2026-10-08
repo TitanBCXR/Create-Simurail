@@ -579,6 +579,10 @@ public class PhysicsBogeyBlockEntity extends KineticBlockEntity implements Namea
 		if(pivot.isRemoved()) {
 			pivot.create(pivotPose);
 		}
+		
+		// Register this bogey's sublevel for lightweight physics attachment
+		com.crystaelix.simurail.api.physics.LightweightPhysicsManager.get((net.minecraft.server.level.ServerLevel)subLevel.getLevel()).registerActiveSubLevel(subLevel);
+		
 		SubLevelPhysicsSystem physics = SubLevelPhysicsSystem.require(subLevel.getLevel());
 		if(pivotJoint == null || !pivotJoint.isValid()) {
 			GenericConstraintConfiguration jointConfig = SimurailJoints.pivotJoint(
@@ -596,6 +600,9 @@ public class PhysicsBogeyBlockEntity extends KineticBlockEntity implements Namea
 	}
 
 	protected void removePivot(ServerSubLevel subLevel) {
+		// Unregister sublevel from lightweight physics manager
+		com.crystaelix.simurail.api.physics.LightweightPhysicsManager.get((net.minecraft.server.level.ServerLevel)subLevel.getLevel()).unregisterActiveSubLevel(subLevel);
+		
 		axleFront.invalidate(subLevel);
 		axleBack.invalidate(subLevel);
 		if(pivotJoint != null) {
