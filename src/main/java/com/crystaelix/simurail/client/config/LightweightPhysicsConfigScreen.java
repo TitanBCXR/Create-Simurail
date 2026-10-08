@@ -1,10 +1,12 @@
 package com.crystaelix.simurail.client.config;
 
 import com.crystaelix.simurail.Simurail;
+import com.crystaelix.simurail.client.FluidDebrisCatalog;
 import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
 import com.crystaelix.simurail.network.SimurailPackets;
 import com.crystaelix.simurail.network.UpdateLightweightPhysicsConfigPacket;
 
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -79,6 +81,10 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private Dex5Slider fluidDebrisScaleSlider, fluidDebrisSpinSpeedSlider;
 	private Dex5Slider fluidWaveAmplitudeSlider, fluidWaveLengthSlider, fluidWaveSpeedSlider, fluidWakeStrengthSlider;
 	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle, fluidEntityInteractionToggle;
+	private DebrisModelPickerWidget debrisModelPicker;
+	private Button openModelsFolderButton;
+	private Button refreshModelsButton;
+	private double restoreScroll = 0;
 	
 	private static class WidgetEntry {
 		final AbstractWidget widget;
@@ -101,10 +107,19 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	}
 	
 	public LightweightPhysicsConfigScreen(Screen parent) {
+		this(parent, LightweightPhysicsConfigValues.loadFromConfig(), false, 0);
+	}
+
+	public LightweightPhysicsConfigScreen(Screen parent, LightweightPhysicsConfigValues pending, boolean dirty, double scroll) {
 		super(Component.literal("Lightweight Physics Configuration"));
 		this.parent = parent;
 		this.originalValues = LightweightPhysicsConfigValues.loadFromConfig();
-		this.currentValues = originalValues.copy();
+		this.currentValues = pending.copy();
+		if (this.currentValues.fluidDebrisModel == null || this.currentValues.fluidDebrisModel.isBlank()) {
+			this.currentValues.fluidDebrisModel = "builtin:water_cube";
+		}
+		this.isDirty = dirty;
+		this.restoreScroll = scroll;
 		
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player != null && mc.level != null) {
@@ -142,6 +157,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			scrollableWidgets.get(scrollableWidgets.size() - 1).baseY + 
 			scrollableWidgets.get(scrollableWidgets.size() - 1).widget.getHeight();
 		maxScrollOffset = Math.max(0, totalHeight - contentHeight);
+		scrollOffset = Mth.clamp(restoreScroll, 0, maxScrollOffset);
 		
 		// Update widget positions for initial scroll
 		updateScrollableWidgetPositions();
@@ -274,6 +290,41 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		fluidVisualsToggle.active = true;
 		scrollableWidgets.add(new WidgetEntry(fluidVisualsToggle, y));
 		y += 30 + WIDGET_SPACING;
+
+		sectionHeaders.add(new SectionHeader("Debris Model", y));
+		y += SECTION_HEADER_HEIGHT + WIDGET_SPACING;
+
+		debrisModelPicker = new DebrisModelPickerWidget(
+			leftX, contentY, widgetWidth, 110,
+			currentValues.fluidDebrisModel,
+			id -> {
+				currentValues.fluidDebrisModel = id;
+				markDirty();
+			}
+		);
+		scrollableWidgets.add(new WidgetEntry(debrisModelPicker, y));
+		y += 110 + WIDGET_SPACING;
+
+		int folderButtonWidth = (widgetWidth - 8) / 2;
+		openModelsFolderButton = Button.builder(
+			Component.literal("Open folder"),
+			button -> {
+				try {
+					FluidDebrisCatalog.ensureFolderAndReadme();
+					Util.getPlatform().openFile(FluidDebrisCatalog.modelsFolder().toFile());
+				} catch (Exception e) {
+					setStatusMessage("Could not open folder", Dex5Colors.ERROR);
+				}
+			}
+		).bounds(leftX, contentY, folderButtonWidth, WIDGET_HEIGHT).build();
+		scrollableWidgets.add(new WidgetEntry(openModelsFolderButton, y));
+
+		refreshModelsButton = Button.builder(
+			Component.literal("Refresh"),
+			button -> refreshCustomModels()
+		).bounds(leftX + folderButtonWidth + 8, contentY, folderButtonWidth, WIDGET_HEIGHT).build();
+		scrollableWidgets.add(new WidgetEntry(refreshModelsButton, y));
+		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidDensitySlider = new Dex5Slider(
 			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
@@ -474,6 +525,10 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		if (debrisModelPicker != null && debrisModelPicker.visible
+				&& debrisModelPicker.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
+			return true;
+		}
 		// Only scroll if mouse is in content area
 		if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
 		    mouseY >= contentY && mouseY <= contentY + contentHeight) {
@@ -565,6 +620,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (updateIntervalSlider != null) updateIntervalSlider.setValue(currentValues.updateInterval);
 		if (sleepVelocitySlider != null) sleepVelocitySlider.setValue(currentValues.sleepVelocity);
 		if (fluidVisualsToggle != null) fluidVisualsToggle.setState(currentValues.fluidRenderStyle > 0);
+		if (debrisModelPicker != null) debrisModelPicker.setSelectedId(currentValues.fluidDebrisModel);
 		if (fluidDensitySlider != null) fluidDensitySlider.setValue(currentValues.fluidDensity);
 		if (fluidDebrisScaleSlider != null) fluidDebrisScaleSlider.setValue(currentValues.fluidDebrisScale);
 		if (fluidDebrisSpinSpeedSlider != null) fluidDebrisSpinSpeedSlider.setValue(currentValues.fluidDebrisSpinSpeed);
@@ -577,6 +633,30 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (fluidMaxCubesSlider != null) fluidMaxCubesSlider.setValue(currentValues.fluidMaxCubes);
 	}
 	
+	private void refreshCustomModels() {
+		FluidDebrisCatalog.ensureFolderAndReadme();
+		FluidDebrisCatalog.scan();
+		setStatusMessage("Reloading resource packs...", Dex5Colors.PRIMARY);
+		Minecraft mc = Minecraft.getInstance();
+		Screen parentScreen = this.parent;
+		LightweightPhysicsConfigValues snapshot = currentValues.copy();
+		boolean dirty = isDirty;
+		double scroll = scrollOffset;
+		mc.reloadResourcePacks().whenComplete((unused, error) -> mc.execute(() -> {
+			if (error != null) {
+				mc.setScreen(new LightweightPhysicsConfigScreen(parentScreen, snapshot, dirty, scroll));
+				if (mc.screen instanceof LightweightPhysicsConfigScreen screen) {
+					screen.setStatusMessage("Reload failed: " + error.getMessage(), Dex5Colors.ERROR);
+				}
+				return;
+			}
+			mc.setScreen(new LightweightPhysicsConfigScreen(parentScreen, snapshot, dirty, scroll));
+			if (mc.screen instanceof LightweightPhysicsConfigScreen screen) {
+				screen.setStatusMessage("Models refreshed", Dex5Colors.SUCCESS);
+			}
+		}));
+	}
+
 	private void setStatusMessage(String message, int color) {
 		this.statusMessage = message;
 		this.statusColor = color;

@@ -1,9 +1,5 @@
 package com.crystaelix.simurail.client;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,13 +11,11 @@ import org.joml.Quaternionf;
 
 import com.crystaelix.simurail.config.SimurailConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelResourceLocation;
@@ -30,7 +24,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.FluidState;
@@ -38,7 +31,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.model.data.ModelData;
 
 /**
  * Client-side renderer for floating fluid debris using baked models.
@@ -85,6 +77,10 @@ public class FluidCubeRenderer {
 	private static boolean modelsLoaded = false;
 	
 	private static boolean readmeWritten = false;
+
+	public static void invalidateModels() {
+		modelsLoaded = false;
+	}
 
 	/**
 	 * Called every client tick to simulate and spawn debris.
@@ -165,9 +161,8 @@ public class FluidCubeRenderer {
 			}
 		}
 		
-		// Write README on first run
 		if (!readmeWritten) {
-			writeReadme();
+			FluidDebrisCatalog.ensureFolderAndReadme();
 			readmeWritten = true;
 		}
 	}
@@ -407,85 +402,23 @@ public class FluidCubeRenderer {
 	}
 
 	private static BakedModel getSelectedModel(boolean isLava, boolean packedIce) {
-		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-		if (isLava) {
-			return switch (style) {
-				case 1 -> cubeLavaModel;
-				case 2 -> iceCubeLavaModel != null ? iceCubeLavaModel : cubeLavaModel;
-				case 3 -> dropletLavaModel != null ? dropletLavaModel : cubeLavaModel;
-				default -> cubeLavaModel;
-			};
-		} else {
-			return switch (style) {
-				case 1 -> cubeModel;
-				case 2 -> packedIce && packedIceCubeModel != null ? packedIceCubeModel : iceCubeModel;
-				case 3 -> dropletModel != null ? dropletModel : cubeModel;
-				default -> cubeModel;
-			};
-		}
-	}
-
-	private static void writeReadme() {
+		String id;
 		try {
-			Path configDir = Paths.get("config", "simurail");
-			Files.createDirectories(configDir);
-			
-			Path readmePath = configDir.resolve("README_fluid_models.txt");
-			if (!Files.exists(readmePath)) {
-				String readme = """
-					Fluid Debris Custom Models
-					===========================
-					
-					You can create custom fluid debris models using Blockbench and override them via resource pack.
-					
-					## Model Format
-					
-					Place your models at: assets/simurail/models/fluid_debris/<name>.json
-					
-					Use standard Blockbench JSON format with texture variable '#fluid':
-					
-					{
-					  "parent": "minecraft:block/block",
-					  "textures": {
-					    "particle": "#fluid",
-					    "all": "#fluid"
-					  },
-					  "elements": [
-					    // Your cube definitions here
-					  ]
-					}
-					
-					## OBJ Models (Optional)
-					
-					You can also use OBJ models via NeoForge's built-in loader:
-					
-					{
-					  "loader": "neoforge:obj",
-					  "model": "simurail:models/fluid_debris/custom.obj",
-					  "textures": {
-					    "fluid": "#fluid"
-					  }
-					}
-					
-					Note: Blender FBX export is NOT supported by Minecraft.
-					Convert FBX to OBJ before using (File > Export > Wavefront OBJ in Blender).
-					
-					## Resource Pack Override
-					
-					1. Create a resource pack with your model at the path above
-					2. Set 'debrisModel' in simurail-client.toml to your model location
-					3. Reload resources (F3+T)
-					
-					Built-in models: simurail:fluid_debris/ice_cube, packed_ice_cube, cube, droplet, tile
-					Lava: ice_cube_lava (magma), cube_lava, droplet_lava, tile_lava
-					World size is set by client config debrisScale (PoseStack), not the JSON element size.
-					""";
-				
-				Files.writeString(readmePath, readme);
-			}
-		} catch (IOException e) {
-			System.err.println("[Simurail] Failed to write README_fluid_models.txt: " + e.getMessage());
+			id = SimurailConfig.client().fluidVisualsDebrisModel.get();
+		} catch (Exception e) {
+			id = FluidDebrisModels.WATER_CUBE;
 		}
+		BakedModel resolved = FluidDebrisModels.resolve(Minecraft.getInstance(), id, isLava, packedIce);
+		if (resolved != null) {
+			return resolved;
+		}
+		if (isLava) {
+			return cubeLavaModel != null ? cubeLavaModel : cubeModel;
+		}
+		if (FluidDebrisModels.isIceStyle(id) && packedIce && packedIceCubeModel != null) {
+			return packedIceCubeModel;
+		}
+		return cubeModel;
 	}
 
 	/**
@@ -736,7 +669,13 @@ public class FluidCubeRenderer {
 			int color;
 			int light;
 			RenderType renderType;
-			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
+			String debrisModelId;
+			try {
+				debrisModelId = SimurailConfig.client().fluidVisualsDebrisModel.get();
+			} catch (Exception e) {
+				debrisModelId = FluidDebrisModels.WATER_CUBE;
+			}
+			boolean iceStyle = FluidDebrisModels.isIceStyle(debrisModelId);
 			
 			if (fluidState.is(FluidTags.WATER)) {
 				Biome biome = level.getBiome(originBlock).value();
@@ -748,7 +687,7 @@ public class FluidCubeRenderer {
 				int g;
 				int b;
 				int a;
-				if (style == 2) {
+				if (iceStyle) {
 					r = (255 * 3 + wr) / 4;
 					g = (255 * 3 + wg) / 4;
 					b = (255 * 3 + wb) / 4;
@@ -765,40 +704,14 @@ public class FluidCubeRenderer {
 			} else if (fluidState.is(FluidTags.LAVA)) {
 				color = 0xFFFFFFFF;
 				light = 0xF000F0;
-				renderType = style == 2 ? RenderType.solid() : RenderType.cutout();
+				renderType = iceStyle ? RenderType.solid() : RenderType.cutout();
 			} else {
 				color = 0xD93232FF;
 				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			}
 			
-			VertexConsumer buffer = bufferSource.getBuffer(renderType);
-			RandomSource random = RandomSource.create(42);
-			
-			// Render all quads from the baked model
-			for (Direction direction : Direction.values()) {
-				List<BakedQuad> quads = model.getQuads(null, direction, random, ModelData.EMPTY, renderType);
-				for (BakedQuad quad : quads) {
-					buffer.putBulkData(poseStack.last(), quad, 
-						(color >> 16 & 0xFF) / 255f,
-						(color >> 8 & 0xFF) / 255f,
-						(color & 0xFF) / 255f,
-						(color >> 24 & 0xFF) / 255f,
-						light, 0x00F000F0);
-				}
-			}
-			
-			// Render unculled quads
-			List<BakedQuad> unculledQuads = model.getQuads(null, null, random, ModelData.EMPTY, renderType);
-			for (BakedQuad quad : unculledQuads) {
-				buffer.putBulkData(poseStack.last(), quad, 
-					(color >> 16 & 0xFF) / 255f,
-					(color >> 8 & 0xFF) / 255f,
-					(color & 0xFF) / 255f,
-					(color >> 24 & 0xFF) / 255f,
-					light, 0x00F000F0);
-			}
-			
+			FluidDebrisModels.renderQuads(poseStack, bufferSource, model, color, light, renderType);
 			poseStack.popPose();
 		}
 	}

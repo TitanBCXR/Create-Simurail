@@ -1,5 +1,8 @@
 package com.crystaelix.simurail.config;
 
+import net.createmod.catnip.config.ConfigBase;
+import net.neoforged.neoforge.common.ModConfigSpec.ConfigValue;
+
 public class SimurailClientConfig extends SimurailBaseConfig {
 
 	public final ConfigGroup bogey = group(0, "bogey", "Physics Bogies");
@@ -11,6 +14,8 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 
 	public final ConfigGroup fluidVisuals = group(0, "fluidVisuals", "Fluid Visuals");
 	public final ConfigInt fluidVisualsRenderStyle = i(1, 0, 3, "renderStyle", Comments.fluidVisualsRenderStyle);
+	public final ConfigBase.CValue<String, ConfigValue<String>> fluidVisualsDebrisModel = new CValue<>("debrisModel",
+		builder -> builder.define("debrisModel", "builtin:water_cube"), Comments.fluidVisualsDebrisModel);
 	public final ConfigFloat fluidVisualsDensity = f(0.5F, 0.1F, 4.0F, "density", Comments.fluidVisualsDensity);
 	public final ConfigFloat fluidVisualsDebrisScale = f(0.25F, 0.1F, 1.0F, "debrisScale", Comments.fluidVisualsDebrisScale);
 	public final ConfigFloat fluidVisualsDebrisSpinSpeed = f(1.0F, 0.0F, 2.0F, "debrisSpinSpeed", Comments.fluidVisualsDebrisSpinSpeed);
@@ -29,6 +34,43 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 	}
 
 	@Override
+	public void onLoad() {
+		super.onLoad();
+		migrateDebrisModel();
+	}
+
+	@Override
+	public void onReload() {
+		super.onReload();
+		migrateDebrisModel();
+	}
+
+	private void migrateDebrisModel() {
+		try {
+			int style = fluidVisualsRenderStyle.get();
+			String model = fluidVisualsDebrisModel.get();
+			boolean changed = false;
+			if (model == null || model.isBlank() || "builtin:water_cube".equals(model)) {
+				if (style == 2) {
+					fluidVisualsDebrisModel.set("builtin:ice_cube");
+					changed = true;
+				} else if (style == 3) {
+					fluidVisualsDebrisModel.set("builtin:droplet");
+					changed = true;
+				}
+			}
+			if (style >= 2) {
+				fluidVisualsRenderStyle.set(1);
+				changed = true;
+			}
+			if (changed && specification != null) {
+				specification.save();
+			}
+		} catch (Exception e) {
+		}
+	}
+
+	@Override
 	public String getName() {
 		return "client";
 	}
@@ -38,7 +80,8 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 		static String wheelSlipSparkDensity = "Multiplier on the amount of sparks spawned by slipping wheels of a Physics Bogie.";
 		static String wheelSlipSparkScale = "Multiplier on the size of the sparks spawned by slipping wheels of a Physics Bogie.";
 
-		static String fluidVisualsRenderStyle = "Fluid debris model. 0=OFF, 1=CUBE/water wave (default), 2=ICE_CUBE, 3=DROPLET. Overridable via resource pack at assets/simurail/models/fluid_debris/<name>.json.";
+		static String fluidVisualsRenderStyle = "Floating debris master switch. 0=OFF, 1=ON. Old 2=ICE_CUBE and 3=DROPLET migrate into debrisModel.";
+		static String fluidVisualsDebrisModel = "Debris model id: builtin:water_cube, builtin:ice_cube, builtin:droplet, builtin:tile, or custom:<name> from config/simurail/fluid_models/. Missing custom models fall back to water_cube.";
 		static String fluidVisualsDensity = "Cubes per surface block. 0.25 = sparse, 0.5 = moderate (default), 1.0 = dense, 2.0+ = very dense.";
 		static String fluidVisualsDebrisScale = "World-space cube edge in blocks. 0.25 = small wave cubes (default), 0.1 = tiny, 1.0 = huge. Applied via PoseStack.";
 		static String fluidVisualsDebrisSpinSpeed = "Roll speed multiplier for the travelling wave. 0.0 = no roll, 1.0 = default, 2.0 = faster.";

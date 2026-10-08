@@ -1,6 +1,5 @@
 package com.crystaelix.simurail.client.config;
 
-import com.crystaelix.simurail.config.FluidRenderStyle;
 import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
 import com.crystaelix.simurail.config.SimurailConfig;
 
@@ -16,6 +15,7 @@ public class ClientConfigHelper {
 	
 	public static void loadClientValues(LightweightPhysicsConfigValues values) {
 		values.fluidRenderStyle = SimurailConfig.client().fluidVisualsRenderStyle.get();
+		values.fluidDebrisModel = SimurailConfig.client().fluidVisualsDebrisModel.get();
 		values.fluidDensity = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
 		values.fluidDebrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
 		values.fluidDebrisSpinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
@@ -33,6 +33,10 @@ public class ClientConfigHelper {
 	
 	public static void applyClientValues(LightweightPhysicsConfigValues values) {
 		SimurailConfig.client().fluidVisualsRenderStyle.set(values.fluidRenderStyle);
+		SimurailConfig.client().fluidVisualsDebrisModel.set(
+			values.fluidDebrisModel == null || values.fluidDebrisModel.isBlank()
+				? "builtin:water_cube"
+				: values.fluidDebrisModel);
 		SimurailConfig.client().fluidVisualsDensity.set((double) values.fluidDensity);
 		SimurailConfig.client().fluidVisualsDebrisScale.set((double) values.fluidDebrisScale);
 		SimurailConfig.client().fluidVisualsDebrisSpinSpeed.set((double) values.fluidDebrisSpinSpeed);

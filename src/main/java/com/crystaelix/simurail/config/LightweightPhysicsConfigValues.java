@@ -17,7 +17,8 @@ public class LightweightPhysicsConfigValues {
 	public boolean debugLogging;
 	
 	// Client-side fluid visuals (all fluid settings are client-only)
-	public int fluidRenderStyle; // 0=OFF, 1=CUBE, 2=ICE_CUBE, 3=DROPLET
+	public int fluidRenderStyle; // 0=OFF, 1+=ON (legacy 2/3 migrate into fluidDebrisModel)
+	public String fluidDebrisModel;
 	public float fluidDensity; // cubes per surface block
 	public float fluidDebrisScale; // world-space edge length in blocks
 	public float fluidDebrisSpinSpeed; // roll multiplier
@@ -62,7 +63,8 @@ public class LightweightPhysicsConfigValues {
 		values.debugLogging = false;
 		
 		// Fluid visuals defaults (all client-side)
-		values.fluidRenderStyle = 1; // CUBE / water wave
+		values.fluidRenderStyle = 1;
+		values.fluidDebrisModel = "builtin:water_cube";
 		values.fluidDensity = 0.5f; // moderate
 		values.fluidDebrisScale = 0.25f;
 		values.fluidDebrisSpinSpeed = 1.0f;
@@ -96,6 +98,9 @@ public class LightweightPhysicsConfigValues {
 		
 		// Fluid visuals (client-only)
 		this.fluidRenderStyle = other.fluidRenderStyle;
+		this.fluidDebrisModel = other.fluidDebrisModel == null || other.fluidDebrisModel.isBlank()
+			? "builtin:water_cube"
+			: other.fluidDebrisModel;
 		this.fluidDensity = other.fluidDensity;
 		this.fluidDebrisScale = other.fluidDebrisScale;
 		this.fluidDebrisSpinSpeed = other.fluidDebrisSpinSpeed;
@@ -145,6 +150,7 @@ public class LightweightPhysicsConfigValues {
 		       updateInterval >= 1 && updateInterval <= 20 &&
 		       sleepVelocity >= 0 && sleepVelocity <= 10 &&
 		       fluidRenderStyle >= 0 && fluidRenderStyle <= 3 &&
+		       fluidDebrisModel != null && !fluidDebrisModel.isBlank() && fluidDebrisModel.length() <= 128 &&
 		       fluidDensity >= 0.1f && fluidDensity <= 4.0f &&
 		       fluidDebrisScale >= 0.1f && fluidDebrisScale <= 1.0f &&
 		       fluidDebrisSpinSpeed >= 0.0f && fluidDebrisSpinSpeed <= 2.0f &&

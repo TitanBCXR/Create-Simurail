@@ -30,6 +30,7 @@ public class ClientConfigBridge {
 		if (clientValueLoader != null) {
 			LightweightPhysicsConfigValues clientValues = clientValueLoader.get();
 			values.fluidRenderStyle = clientValues.fluidRenderStyle;
+			values.fluidDebrisModel = clientValues.fluidDebrisModel;
 			values.fluidDensity = clientValues.fluidDensity;
 			values.fluidDebrisScale = clientValues.fluidDebrisScale;
 			values.fluidDebrisSpinSpeed = clientValues.fluidDebrisSpinSpeed;
