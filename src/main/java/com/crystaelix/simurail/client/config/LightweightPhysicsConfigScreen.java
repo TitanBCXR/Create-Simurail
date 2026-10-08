@@ -75,8 +75,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	
 	// Widget references
 	private Dex5Slider radiusSlider, maxActiveSlider, updateIntervalSlider, sleepVelocitySlider;
-	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, cubesPerBlockSlider;
-	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle, fluidReplaceVanillaToggle;
+	private Dex5Slider fluidRenderRadiusSlider, fluidMaxCubesSlider, fluidDensitySlider;
+	private Dex5ToggleButton enabledToggle, debugToggle, fluidVisualsToggle;
 	
 	private static class WidgetEntry {
 		final AbstractWidget widget;
@@ -261,7 +261,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		
 		fluidVisualsToggle = new Dex5ToggleButton(
 			centerX - 90, contentY, 180, 30,
-			Component.literal("Flowing Cubes"),
+			Component.literal("Floating Cubes"),
 			currentValues.fluidRenderStyle > 0,
 			button -> {
 				currentValues.fluidRenderStyle = (currentValues.fluidRenderStyle == 0) ? 1 : 0;
@@ -273,21 +273,19 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		scrollableWidgets.add(new WidgetEntry(fluidVisualsToggle, y));
 		y += 30 + WIDGET_SPACING;
 		
-		cubesPerBlockSlider = new Dex5Slider(
+		fluidDensitySlider = new Dex5Slider(
 			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
-			Component.literal("Cubes Per Block: "),
-			Component.literal(""),
-			1, 27, currentValues.fluidCubesPerBlock,
+			Component.literal("Density: "),
+			Component.literal(" cubes/block"),
+			0.1, 4.0, currentValues.fluidDensity,
 			value -> {
-				int v = value.intValue();
-				if (v <= 4) currentValues.fluidCubesPerBlock = 1;
-				else if (v <= 17) currentValues.fluidCubesPerBlock = 8;
-				else currentValues.fluidCubesPerBlock = 27;
+				currentValues.fluidDensity = value.floatValue();
 				markDirty();
-			}
+			},
+			true
 		);
-		cubesPerBlockSlider.active = true;
-		scrollableWidgets.add(new WidgetEntry(cubesPerBlockSlider, y));
+		fluidDensitySlider.active = true;
+		scrollableWidgets.add(new WidgetEntry(fluidDensitySlider, y));
 		y += WIDGET_HEIGHT + WIDGET_SPACING;
 		
 		fluidRenderRadiusSlider = new Dex5Slider(
@@ -308,7 +306,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			leftX, contentY, widgetWidth, WIDGET_HEIGHT,
 			Component.literal("Max Cubes: "),
 			Component.literal(""),
-			256, 32768, currentValues.fluidMaxCubes,
+			64, 4096, currentValues.fluidMaxCubes,
 			value -> {
 				currentValues.fluidMaxCubes = value.intValue();
 				markDirty();
@@ -316,20 +314,6 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		);
 		fluidMaxCubesSlider.active = true;
 		scrollableWidgets.add(new WidgetEntry(fluidMaxCubesSlider, y));
-		y += WIDGET_HEIGHT + WIDGET_SPACING;
-		
-		fluidReplaceVanillaToggle = new Dex5ToggleButton(
-			centerX - 90, contentY, 180, WIDGET_HEIGHT,
-			Component.literal("Replace Vanilla Fluid"),
-			currentValues.fluidReplaceVanilla,
-			button -> {
-				currentValues.fluidReplaceVanilla = !currentValues.fluidReplaceVanilla;
-				((Dex5ToggleButton) button).setState(currentValues.fluidReplaceVanilla);
-				markDirty();
-			}
-		);
-		fluidReplaceVanillaToggle.active = true;
-		scrollableWidgets.add(new WidgetEntry(fluidReplaceVanillaToggle, y));
 	}
 	
 	/**
@@ -453,8 +437,6 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			return;
 		}
 		
-		boolean replaceVanillaChanged = (currentValues.fluidReplaceVanilla != originalValues.fluidReplaceVanilla);
-		
 		currentValues.applyToConfig();
 		
 		UpdateLightweightPhysicsConfigPacket packet = new UpdateLightweightPhysicsConfigPacket(currentValues);
@@ -464,10 +446,6 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		isDirty = false;
 		if (saveButton != null) {
 			saveButton.active = false;
-		}
-		
-		if (replaceVanillaChanged && minecraft.levelRenderer != null) {
-			minecraft.levelRenderer.allChanged();
 		}
 		
 		setStatusMessage("Saved successfully", Dex5Colors.SUCCESS);
@@ -481,10 +459,9 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		if (updateIntervalSlider != null) updateIntervalSlider.setValue(currentValues.updateInterval);
 		if (sleepVelocitySlider != null) sleepVelocitySlider.setValue(currentValues.sleepVelocity);
 		if (fluidVisualsToggle != null) fluidVisualsToggle.setState(currentValues.fluidRenderStyle > 0);
-		if (cubesPerBlockSlider != null) cubesPerBlockSlider.setValue(currentValues.fluidCubesPerBlock);
+		if (fluidDensitySlider != null) fluidDensitySlider.setValue(currentValues.fluidDensity);
 		if (fluidRenderRadiusSlider != null) fluidRenderRadiusSlider.setValue(currentValues.fluidRenderRadius);
 		if (fluidMaxCubesSlider != null) fluidMaxCubesSlider.setValue(currentValues.fluidMaxCubes);
-		if (fluidReplaceVanillaToggle != null) fluidReplaceVanillaToggle.setState(currentValues.fluidReplaceVanilla);
 	}
 	
 	private void setStatusMessage(String message, int color) {

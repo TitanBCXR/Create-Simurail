@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import com.crystaelix.simurail.client.fluid.FluidMesh;
 import com.crystaelix.simurail.config.SimurailConfig;
@@ -15,6 +17,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
@@ -23,20 +26,21 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 
 /**
- * Client-side renderer for flowing fluid cubes.
- * Renders small animated cubes with real fluid textures that flow along fluid currents.
- * This is purely visual and creates no server-side physics bodies.
+ * Client-side renderer for floating fluid cubes.
+ * Cubes float on the water surface, drift with the current, and follow waterfalls.
+ * Vanilla fluids always render normally - cubes overlay on top.
  */
 @OnlyIn(Dist.CLIENT)
 public class FluidCubeRenderer {
 
-	private static final List<FluidCube> activeCubes = new ArrayList<>();
+	private static final List<FloatingCube> cubePool = new ArrayList<>();
 	private static int tickCounter = 0;
 	
 	private static FluidMesh cubeMesh;
@@ -50,35 +54,39 @@ public class FluidCubeRenderer {
 	}
 
 	/**
-	 * Called every client tick to update and spawn cubes.
+	 * Called every client tick to simulate and spawn cubes.
 	 */
 	public static void tick(Minecraft mc) {
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0) {
-				activeCubes.clear();
+			if (style == 0 || mc.level == null || mc.player == null) {
+				cubePool.clear();
 				return;
 			}
 		} catch (Exception e) {
-			activeCubes.clear();
+			cubePool.clear();
 			return;
 		}
 
 		tickCounter++;
-		activeCubes.removeIf(cube -> !cube.tick(mc.level));
-
-		if (tickCounter % 2 == 0 && mc.player != null && mc.level != null) {
-			spawnCubes(mc);
+		Level level = mc.level;
+		
+		// Simulate existing cubes
+		cubePool.removeIf(cube -> !cube.tick(level));
+		
+		// Spawn new cubes on surface blocks
+		if (tickCounter % 2 == 0) {
+			spawnCubesOnSurface(mc);
 		}
 	}
 
 	/**
-	 * Render all active fluid cubes with textures.
+	 * Render all floating cubes with frustum culling and batching.
 	 */
-	public static void render(PoseStack poseStack, Camera camera, float partialTick) {
+	public static void render(PoseStack poseStack, Camera camera, float partialTick, Frustum frustum) {
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0 || activeCubes.isEmpty()) {
+			if (style == 0 || cubePool.isEmpty()) {
 				return;
 			}
 		} catch (Exception e) {
@@ -86,28 +94,38 @@ public class FluidCubeRenderer {
 		}
 
 		Vec3 camPos = camera.getPosition();
-		Matrix4f matrix = poseStack.last().pose();
 		Minecraft mc = Minecraft.getInstance();
 		MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
 		
-		for (FluidCube cube : activeCubes) {
-			double dx = cube.pos.x - camPos.x;
-			double dy = cube.pos.y - camPos.y;
-			double dz = cube.pos.z - camPos.z;
-			double distSq = dx * dx + dy * dy + dz * dz;
+		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
+		double radiusSq = renderRadius * renderRadius;
+		
+		for (FloatingCube cube : cubePool) {
+			Vec3 renderPos = cube.getRenderPos(partialTick);
+			double dx = renderPos.x - camPos.x;
+			double dy = renderPos.y - camPos.y;
+			double dz = renderPos.z - camPos.z;
 			
-			int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
-			if (distSq > renderRadius * renderRadius) {
+			if (dx * dx + dy * dy + dz * dz > radiusSq) {
 				continue;
 			}
 			
-			cube.render(bufferSource, matrix, camPos, partialTick, mc.level);
+			AABB box = new AABB(
+				renderPos.x - cube.size, renderPos.y - cube.size, renderPos.z - cube.size,
+				renderPos.x + cube.size, renderPos.y + cube.size, renderPos.z + cube.size
+			);
+			
+			if (!frustum.isVisible(box)) {
+				continue;
+			}
+			
+			cube.render(poseStack, bufferSource, camPos, partialTick, mc.level);
 		}
 		
 		bufferSource.endBatch();
 	}
 
-	private static void spawnCubes(Minecraft mc) {
+	private static void spawnCubesOnSurface(Minecraft mc) {
 		FluidMesh currentMesh = getSelectedMesh();
 		int meshTriangles = currentMesh.getTriangleCount();
 		
@@ -115,78 +133,54 @@ public class FluidCubeRenderer {
 		int maxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
 		int effectiveMaxCubes = Math.min(configMaxCubes, maxTriangles / Math.max(1, meshTriangles));
 		
-		if (activeCubes.size() >= effectiveMaxCubes) {
-			Vec3 playerPos = mc.player.position();
-			activeCubes.sort((a, b) -> Double.compare(
-				b.pos.distanceToSqr(playerPos.x, playerPos.y, playerPos.z),
-				a.pos.distanceToSqr(playerPos.x, playerPos.y, playerPos.z)
-			));
-			while (activeCubes.size() >= effectiveMaxCubes) {
-				activeCubes.remove(activeCubes.size() - 1);
-			}
+		if (cubePool.size() >= effectiveMaxCubes) {
+			return;
 		}
-
+		
 		int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
-		int cubesPerBlock = SimurailConfig.client().fluidVisualsCubesPerBlock.get();
-		int subdivision = cubesPerBlock == 1 ? 1 : (cubesPerBlock == 8 ? 2 : 3);
-
+		float density = SimurailConfig.client().fluidVisualsDensity.get().floatValue();
 		BlockPos playerPos = mc.player.blockPosition();
 		Level level = mc.level;
-
-		for (int i = 0; i < 8; i++) {
+		
+		// Sample random surface blocks
+		int attempts = (int) (density * 16);
+		for (int i = 0; i < attempts && cubePool.size() < effectiveMaxCubes; i++) {
 			int dx = level.random.nextInt(renderRadius * 2) - renderRadius;
-			int dy = level.random.nextInt(8) - 4;
+			int dy = level.random.nextInt(16) - 8;
 			int dz = level.random.nextInt(renderRadius * 2) - renderRadius;
 			
 			BlockPos pos = playerPos.offset(dx, dy, dz);
 			FluidState fluidState = level.getFluidState(pos);
 			
-			if (fluidState.isEmpty() || !isFluidExposed(level, pos)) {
+			if (fluidState.isEmpty()) {
 				continue;
 			}
-
-			Vec3 flow = fluidState.getFlow(level, pos);
-			float fluidHeight = fluidState.getHeight(level, pos);
 			
-			for (int sx = 0; sx < subdivision; sx++) {
-				for (int sy = 0; sy < subdivision; sy++) {
-					for (int sz = 0; sz < subdivision; sz++) {
-						if (activeCubes.size() >= effectiveMaxCubes) {
-							return;
-						}
-						
-						double cubeSize = 1.0 / subdivision;
-						double offsetX = pos.getX() + sx * cubeSize + cubeSize * 0.5;
-						double offsetY = pos.getY() + sy * cubeSize + cubeSize * 0.5;
-						double offsetZ = pos.getZ() + sz * cubeSize + cubeSize * 0.5;
-						
-						double yInBlock = sy * cubeSize + cubeSize * 0.5;
-						if (yInBlock > fluidHeight) {
-							continue;
-						}
-						
-						double adjustedSize = cubeSize * 0.8;
-						if (sy == subdivision - 1 && yInBlock + cubeSize * 0.5 > fluidHeight) {
-							double excess = (yInBlock + cubeSize * 0.5) - fluidHeight;
-							adjustedSize = Math.max(0.1, cubeSize * 0.8 - excess);
-						}
-						
-						float uvOffsetX = sx * (float)cubeSize;
-						float uvOffsetZ = sz * (float)cubeSize;
-						
-						activeCubes.add(new FluidCube(
-							new Vec3(offsetX, offsetY, offsetZ),
-							flow,
-							fluidState,
-							pos,
-							adjustedSize,
-							level.random.nextFloat() * 20f,
-							uvOffsetX,
-							uvOffsetZ
-						));
-					}
-				}
+			// Only spawn on surface (air above)
+			if (!level.getFluidState(pos.above()).isEmpty()) {
+				continue;
 			}
+			
+			float fluidHeight = fluidState.getHeight(level, pos);
+			double surfaceY = pos.getY() + fluidHeight;
+			
+			// Random position on surface
+			double x = pos.getX() + level.random.nextDouble();
+			double z = pos.getZ() + level.random.nextDouble();
+			
+			// Random size (0.15 to 0.3 blocks)
+			float size = 0.15f + level.random.nextFloat() * 0.15f;
+			
+			// Random lifetime (10-20 seconds)
+			int lifetime = 200 + level.random.nextInt(200);
+			
+			cubePool.add(new FloatingCube(
+				new Vec3(x, surfaceY, z),
+				fluidState,
+				pos,
+				size,
+				lifetime
+			));
 		}
 	}
 
@@ -199,97 +193,110 @@ public class FluidCubeRenderer {
 			default -> cubeMesh;
 		};
 	}
-	
-	private static boolean isFluidExposed(Level level, BlockPos pos) {
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dy = -1; dy <= 1; dy++) {
-				for (int dz = -1; dz <= 1; dz++) {
-					if (dx == 0 && dy == 0 && dz == 0) continue;
-					BlockPos neighbor = pos.offset(dx, dy, dz);
-					if (level.getFluidState(neighbor).isEmpty() || 
-						!level.getBlockState(neighbor).isSolidRender(level, neighbor)) {
-						return true;
-					}
-				}
-			}
-		}
-		return false;
-	}
 
-	private static class FluidCube {
+	/**
+	 * A single floating cube on the water surface.
+	 */
+	private static class FloatingCube {
 		Vec3 pos;
-		Vec3 originalPos;
-		Vec3 flow;
+		Vec3 prevPos;
+		Vec3 velocity;
 		FluidState fluidState;
-		BlockPos blockPos;
-		double size;
-		float age;
+		BlockPos originBlock;
+		float size;
+		int lifetime;
+		int age;
+		Quaternionf rotation;
+		float rotationSpeed;
 		float bobPhase;
-		float uvOffsetX;
-		float uvOffsetZ;
 
-		FluidCube(Vec3 pos, Vec3 flow, FluidState fluidState, BlockPos blockPos, 
-		          double size, float bobPhase, float uvOffsetX, float uvOffsetZ) {
+		FloatingCube(Vec3 pos, FluidState fluidState, BlockPos originBlock, float size, int lifetime) {
 			this.pos = pos;
-			this.originalPos = pos;
-			this.flow = flow;
+			this.prevPos = pos;
+			this.velocity = Vec3.ZERO;
 			this.fluidState = fluidState;
-			this.blockPos = blockPos;
+			this.originBlock = originBlock;
 			this.size = size;
+			this.lifetime = lifetime;
 			this.age = 0;
-			this.bobPhase = bobPhase;
-			this.uvOffsetX = uvOffsetX;
-			this.uvOffsetZ = uvOffsetZ;
+			this.rotation = new Quaternionf();
+			this.rotationSpeed = (float) ((Math.random() - 0.5) * 0.02);
+			this.bobPhase = (float) (Math.random() * Math.PI * 2);
 		}
 
 		boolean tick(Level level) {
 			age++;
-
-			boolean isFalling = fluidState.is(FluidTags.WATER) && 
-				level != null && 
-				level.getFluidState(blockPos.below()).isEmpty();
+			prevPos = pos;
 			
-			if (isFalling) {
-				pos = pos.add(0, -0.08, 0);
-			} else if (flow.lengthSqr() > 0.001) {
-				double speed = 0.02 * Math.min(1.0, flow.length());
-				pos = pos.add(flow.scale(speed));
+			if (age >= lifetime) {
+				return false;
 			}
 			
 			BlockPos currentBlock = BlockPos.containing(pos);
-			double localX = pos.x - currentBlock.getX();
-			double localY = pos.y - currentBlock.getY();
-			double localZ = pos.z - currentBlock.getZ();
+			FluidState currentFluid = level.getFluidState(currentBlock);
 			
-			if (localX < 0 || localX > 1) pos = new Vec3(currentBlock.getX() + 0.5, pos.y, pos.z);
-			if (localY < 0 || localY > 1) pos = new Vec3(pos.x, currentBlock.getY() + 0.5, pos.z);
-			if (localZ < 0 || localZ > 1) pos = new Vec3(pos.x, pos.y, currentBlock.getZ() + 0.5);
-
-			if (level != null) {
-				FluidState currentFluid = level.getFluidState(BlockPos.containing(pos));
-				if (currentFluid.isEmpty()) {
-					return false;
-				}
+			if (currentFluid.isEmpty()) {
+				return false;
 			}
-
-			return age < 300;
+			
+			// Get target flow velocity
+			Vec3 targetFlow = currentFluid.getFlow(level, currentBlock).scale(0.05);
+			
+			// Check if falling (fluid below is falling or no surface)
+			FluidState below = level.getFluidState(currentBlock.below());
+			boolean isFalling = below.isEmpty() || 
+				(below.is(FluidTags.WATER) && level.getFluidState(currentBlock.below().above()).isEmpty());
+			
+			if (isFalling) {
+				// Fall with gravity
+				velocity = velocity.add(0, -0.04, 0);
+			} else {
+				// Push toward flow with damping
+				velocity = velocity.scale(0.9).add(targetFlow.scale(0.1));
+				
+				// Target surface height
+				float fluidHeight = currentFluid.getHeight(level, currentBlock);
+				double targetY = currentBlock.getY() + fluidHeight;
+				
+				// Bob gently
+				double bob = Math.sin((age + bobPhase) * 0.1) * 0.02;
+				targetY += bob;
+				
+				// Smooth Y toward surface
+				double dy = (targetY - pos.y) * 0.1;
+				velocity = new Vec3(velocity.x, dy, velocity.z);
+			}
+			
+			// Apply velocity
+			pos = pos.add(velocity);
+			
+			// Rotate slowly
+			rotation.rotateY(rotationSpeed);
+			
+			return true;
 		}
 
-		void render(MultiBufferSource bufferSource, Matrix4f matrix, Vec3 camPos, 
+		Vec3 getRenderPos(float partialTick) {
+			return new Vec3(
+				prevPos.x + (pos.x - prevPos.x) * partialTick,
+				prevPos.y + (pos.y - prevPos.y) * partialTick,
+				prevPos.z + (pos.z - prevPos.z) * partialTick
+			);
+		}
+
+		void render(PoseStack poseStack, MultiBufferSource bufferSource, Vec3 camPos, 
 		            float partialTick, Level level) {
-			float x = (float)(pos.x - camPos.x);
-			float y = (float)(pos.y - camPos.y);
-			float z = (float)(pos.z - camPos.z);
+			Vec3 renderPos = getRenderPos(partialTick);
+			float x = (float) (renderPos.x - camPos.x);
+			float y = (float) (renderPos.y - camPos.y);
+			float z = (float) (renderPos.z - camPos.z);
 			
-			float bob = 0;
-			if (flow.lengthSqr() < 0.001 && fluidState.is(FluidTags.WATER)) {
-				bob = (float) (Math.sin((age + partialTick + bobPhase) * 0.1) * 0.02);
-				y += bob;
-			}
+			poseStack.pushPose();
+			poseStack.translate(x, y, z);
+			poseStack.mulPose(rotation);
 			
 			IClientFluidTypeExtensions fluidExtensions = IClientFluidTypeExtensions.of(fluidState);
-			ResourceLocation textureLocation = flow.lengthSqr() > 0.001 ? 
-				fluidExtensions.getFlowingTexture() : fluidExtensions.getStillTexture();
+			ResourceLocation textureLocation = fluidExtensions.getStillTexture();
 			
 			TextureAtlasSprite sprite = Minecraft.getInstance()
 				.getTextureAtlas(TextureAtlas.LOCATION_BLOCKS)
@@ -300,27 +307,30 @@ public class FluidCubeRenderer {
 			RenderType renderType;
 			
 			if (fluidState.is(FluidTags.WATER)) {
-				Biome biome = level.getBiome(blockPos).value();
+				Biome biome = level.getBiome(originBlock).value();
 				int waterColor = biome.getWaterColor();
 				int r = (waterColor >> 16) & 0xFF;
 				int g = (waterColor >> 8) & 0xFF;
 				int b = waterColor & 0xFF;
-				color = (180 << 24) | (r << 16) | (g << 8) | b;
-				light = LevelRenderer.getLightColor(level, blockPos);
+				color = (217 << 24) | (r << 16) | (g << 8) | b; // 85% alpha
+				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			} else if (fluidState.is(FluidTags.LAVA)) {
 				color = (255 << 24) | (255 << 16) | (100 << 8) | 20;
 				light = 0xF000F0;
 				renderType = RenderType.solid();
 			} else {
-				color = (180 << 24) | (50 << 16) | (50 << 8) | 255;
-				light = LevelRenderer.getLightColor(level, blockPos);
+				color = (217 << 24) | (50 << 16) | (50 << 8) | 255;
+				light = LevelRenderer.getLightColor(level, BlockPos.containing(renderPos));
 				renderType = RenderType.translucent();
 			}
 			
 			VertexConsumer buffer = bufferSource.getBuffer(renderType);
 			FluidMesh mesh = getSelectedMesh();
-			mesh.renderTextured(buffer, matrix, x, y, z, (float)size, sprite, color, light, uvOffsetX, uvOffsetZ);
+			Matrix4f matrix = poseStack.last().pose();
+			mesh.renderTextured(buffer, matrix, 0, 0, 0, size, sprite, color, light, 0, 0);
+			
+			poseStack.popPose();
 		}
 	}
 }

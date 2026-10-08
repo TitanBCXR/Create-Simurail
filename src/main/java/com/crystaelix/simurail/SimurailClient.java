@@ -71,7 +71,7 @@ public class SimurailClient {
 	public void onRenderLevel(RenderLevelStageEvent event) {
 		if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
 			FluidCubeRenderer.render(event.getPoseStack(), event.getCamera(), 
-				event.getPartialTick().getGameTimeDeltaPartialTick(false));
+				event.getPartialTick().getGameTimeDeltaPartialTick(false), event.getFrustum());
 		}
 	}
 }

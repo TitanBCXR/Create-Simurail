@@ -17,8 +17,8 @@ public class LightweightPhysicsConfigValues {
 	public boolean debugLogging;
 	
 	// Client-side fluid visuals (all fluid settings are client-only)
-	public int fluidRenderStyle; // 0=VANILLA, 1=CUBE, 2=DROPLET, 3=TILE, 4=CUSTOM
-	public int fluidCubesPerBlock;
+	public int fluidRenderStyle; // 0=OFF, 1=CUBE, 2=DROPLET, 3=TILE
+	public float fluidDensity; // cubes per surface block
 	public int fluidRenderRadius;
 	public int fluidMaxCubes;
 	public int fluidMaxTriangles;
@@ -54,10 +54,10 @@ public class LightweightPhysicsConfigValues {
 		values.debugLogging = false;
 		
 		// Fluid visuals defaults (all client-side)
-		values.fluidRenderStyle = 0; // VANILLA
-		values.fluidCubesPerBlock = 8;
+		values.fluidRenderStyle = 1; // CUBE (default, not OFF)
+		values.fluidDensity = 0.5f; // moderate
 		values.fluidRenderRadius = 16;
-		values.fluidMaxCubes = 4096;
+		values.fluidMaxCubes = 512;
 		values.fluidMaxTriangles = 100000;
 		values.fluidReplaceVanilla = false;
 		
@@ -80,7 +80,7 @@ public class LightweightPhysicsConfigValues {
 		
 		// Fluid visuals (client-only)
 		this.fluidRenderStyle = other.fluidRenderStyle;
-		this.fluidCubesPerBlock = other.fluidCubesPerBlock;
+		this.fluidDensity = other.fluidDensity;
 		this.fluidRenderRadius = other.fluidRenderRadius;
 		this.fluidMaxCubes = other.fluidMaxCubes;
 		this.fluidMaxTriangles = other.fluidMaxTriangles;
@@ -120,10 +120,10 @@ public class LightweightPhysicsConfigValues {
 		       maxActive >= 0 && maxActive <= 2048 &&
 		       updateInterval >= 1 && updateInterval <= 20 &&
 		       sleepVelocity >= 0 && sleepVelocity <= 10 &&
-		       fluidRenderStyle >= 0 && fluidRenderStyle <= 4 &&
-		       (fluidCubesPerBlock == 1 || fluidCubesPerBlock == 8 || fluidCubesPerBlock == 27) &&
+		       fluidRenderStyle >= 0 && fluidRenderStyle <= 3 &&
+		       fluidDensity >= 0.1f && fluidDensity <= 4.0f &&
 		       fluidRenderRadius >= 4 && fluidRenderRadius <= 64 &&
-		       fluidMaxCubes >= 256 && fluidMaxCubes <= 32768 &&
+		       fluidMaxCubes >= 64 && fluidMaxCubes <= 4096 &&
 		       fluidMaxTriangles >= 10000 && fluidMaxTriangles <= 1000000;
 	}
 }

@@ -30,7 +30,7 @@ public class ClientConfigBridge {
 		if (clientValueLoader != null) {
 			LightweightPhysicsConfigValues clientValues = clientValueLoader.get();
 			values.fluidRenderStyle = clientValues.fluidRenderStyle;
-			values.fluidCubesPerBlock = clientValues.fluidCubesPerBlock;
+			values.fluidDensity = clientValues.fluidDensity;
 			values.fluidRenderRadius = clientValues.fluidRenderRadius;
 			values.fluidMaxCubes = clientValues.fluidMaxCubes;
 			values.fluidMaxTriangles = clientValues.fluidMaxTriangles;
