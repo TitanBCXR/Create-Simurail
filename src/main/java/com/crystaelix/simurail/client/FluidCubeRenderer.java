@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.joml.Matrix4f;
 
+import com.crystaelix.simurail.client.fluid.FluidMesh;
 import com.crystaelix.simurail.config.SimurailConfig;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -35,6 +36,17 @@ public class FluidCubeRenderer {
 
 	private static final List<FluidCube> activeCubes = new ArrayList<>();
 	private static int tickCounter = 0;
+	
+	// Cached meshes for each render style
+	private static FluidMesh cubeMesh;
+	private static FluidMesh dropletMesh;
+	private static FluidMesh tileMesh;
+	
+	static {
+		cubeMesh = FluidMesh.createCube();
+		dropletMesh = FluidMesh.createDroplet();
+		tileMesh = FluidMesh.createTile();
+	}
 
 	/**
 	 * Called every client tick to update and spawn cubes.
@@ -104,15 +116,23 @@ public class FluidCubeRenderer {
 	 * Spawn new cubes near the player.
 	 */
 	private static void spawnCubes(Minecraft mc) {
-		int maxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
-		if (activeCubes.size() >= maxCubes) {
+		// Get current mesh and its triangle count
+		FluidMesh currentMesh = getSelectedMesh();
+		int meshTriangles = currentMesh.getTriangleCount();
+		
+		// Enforce triangle budget: reduce max cubes to fit within clientMaxFluidTriangles
+		int configMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
+		int maxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
+		int effectiveMaxCubes = Math.min(configMaxCubes, maxTriangles / Math.max(1, meshTriangles));
+		
+		if (activeCubes.size() >= effectiveMaxCubes) {
 			// Remove farthest cubes
 			Vec3 playerPos = mc.player.position();
 			activeCubes.sort((a, b) -> Double.compare(
 				b.pos.distanceToSqr(playerPos.x, playerPos.y, playerPos.z),
 				a.pos.distanceToSqr(playerPos.x, playerPos.y, playerPos.z)
 			));
-			while (activeCubes.size() >= maxCubes) {
+			while (activeCubes.size() >= effectiveMaxCubes) {
 				activeCubes.remove(activeCubes.size() - 1);
 			}
 		}
@@ -146,13 +166,13 @@ public class FluidCubeRenderer {
 			Vec3 flow = fluidState.getFlow(level, pos);
 			int color = getFluidColor(level, pos, fluidState);
 			
-			// Spawn one cube per subdivision cell
-			for (int sx = 0; sx < subdivision; sx++) {
-				for (int sy = 0; sy < subdivision; sy++) {
-					for (int sz = 0; sz < subdivision; sz++) {
-						if (activeCubes.size() >= maxCubes) {
-							return;
-						}
+		// Spawn one cube per subdivision cell
+		for (int sx = 0; sx < subdivision; sx++) {
+			for (int sy = 0; sy < subdivision; sy++) {
+				for (int sz = 0; sz < subdivision; sz++) {
+					if (activeCubes.size() >= effectiveMaxCubes) {
+						return;
+					}
 						
 						double cubeSize = 1.0 / subdivision;
 						double offsetX = pos.getX() + sx * cubeSize + cubeSize * 0.5;
@@ -172,6 +192,19 @@ public class FluidCubeRenderer {
 		}
 	}
 
+	/**
+	 * Get the currently selected fluid mesh based on config.
+	 */
+	private static FluidMesh getSelectedMesh() {
+		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
+		return switch (style) {
+			case 1 -> cubeMesh;      // CUBE
+			case 2 -> dropletMesh;   // DROPLET
+			case 3 -> tileMesh;      // TILE
+			default -> cubeMesh;     // Fallback to cube
+		};
+	}
+	
 	/**
 	 * Check if a fluid block has any exposed faces (not fully surrounded).
 	 */
@@ -275,49 +308,9 @@ public class FluidCubeRenderer {
 			float y = (float)(pos.y - camPos.y);
 			float z = (float)(pos.z - camPos.z);
 			
-			float hs = (float) (size * 0.5);
-			
-			int a = (color >> 24) & 0xFF;
-			int r = (color >> 16) & 0xFF;
-			int g = (color >> 8) & 0xFF;
-			int b = color & 0xFF;
-
-			// Render a simple cube (6 faces) using addVertex
-			// Bottom face
-			buffer.addVertex(matrix, x - hs, y - hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y - hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y - hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y - hs, z + hs).setColor(r, g, b, a);
-
-			// Top face
-			buffer.addVertex(matrix, x - hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y + hs, z - hs).setColor(r, g, b, a);
-
-			// North face
-			buffer.addVertex(matrix, x - hs, y - hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y + hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y - hs, z - hs).setColor(r, g, b, a);
-
-			// South face
-			buffer.addVertex(matrix, x + hs, y - hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y - hs, z + hs).setColor(r, g, b, a);
-
-			// West face
-			buffer.addVertex(matrix, x - hs, y - hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y + hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x - hs, y - hs, z - hs).setColor(r, g, b, a);
-
-			// East face
-			buffer.addVertex(matrix, x + hs, y - hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z - hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y + hs, z + hs).setColor(r, g, b, a);
-			buffer.addVertex(matrix, x + hs, y - hs, z + hs).setColor(r, g, b, a);
+			// Use selected mesh to render
+			FluidMesh mesh = getSelectedMesh();
+			mesh.render(buffer, matrix, x, y, z, (float)size, color);
 		}
 	}
 }
