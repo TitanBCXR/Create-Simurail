@@ -191,6 +191,9 @@ loom {
 	runs {
 		configureEach {
 			property "forge.logging.console.level", "debug"
+			property "mixin.debug.verify", "true"
+			property "mixin.checks", "true"
+			property "mixin.debug.export", "true"
 		}
 		client
 		server

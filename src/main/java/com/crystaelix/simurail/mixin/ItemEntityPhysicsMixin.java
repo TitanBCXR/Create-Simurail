@@ -108,13 +108,4 @@ public abstract class ItemEntityPhysicsMixin implements ILightweightPhysicsEntit
 			}
 		}
 	}
-
-	@Inject(method = "remove", at = @At("HEAD"))
-	private void simurail$onRemove(CallbackInfo ci) {
-		ItemEntity self = (ItemEntity) (Object) this;
-		if (self.level() instanceof ServerLevel serverLevel && simurail$physicsBody != null) {
-			LightweightPhysicsManager.get(serverLevel).remove(self);
-			simurail$physicsBody = null;
-		}
-	}
 }
