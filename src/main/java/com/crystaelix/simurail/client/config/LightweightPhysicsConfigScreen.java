@@ -37,13 +37,25 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	private int statusColor = Dex5Colors.TEXT_SECONDARY;
 	private long statusTime = 0;
 	
-	// Layout constants
-	private static final int TITLE_Y = 20;
-	private static final int CONTENT_START_Y = 50;
+	// Layout constants (proportional sizing)
+	private static final float PANEL_WIDTH_RATIO = 0.85f;  // 85% of screen width
+	private static final int PANEL_MIN_WIDTH = 360;
+	private static final int PANEL_MAX_WIDTH = 480;
+	private static final float PANEL_HEIGHT_RATIO = 0.90f; // 90% of screen height
+	private static final int PANEL_MIN_HEIGHT = 400;
+	
+	private static final int TITLE_OFFSET = 20;
+	private static final int CONTENT_START_OFFSET = 50;
 	private static final int WIDGET_HEIGHT = 24;
 	private static final int WIDGET_SPACING = 6;
+	private static final int BIG_TOGGLE_HEIGHT = 40;
 	private static final int BUTTON_WIDTH = 100;
 	private static final int BUTTON_HEIGHT = 24;
+	private static final int BOTTOM_BUTTON_MARGIN = 35;
+	
+	// Computed layout values
+	private int panelX, panelY, panelWidth, panelHeight;
+	private int contentWidth;
 	
 	// Slider components
 	private Dex5Slider radiusSlider;
@@ -79,11 +91,22 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	protected void init() {
 		super.init();
 		
+		// Compute responsive layout
+		panelWidth = Mth.clamp((int)(this.width * PANEL_WIDTH_RATIO), PANEL_MIN_WIDTH, PANEL_MAX_WIDTH);
+		panelWidth = Math.min(panelWidth, this.width - 20);
+		
+		panelHeight = (int)(this.height * PANEL_HEIGHT_RATIO);
+		panelHeight = Math.max(panelHeight, PANEL_MIN_HEIGHT);
+		panelHeight = Math.min(panelHeight, this.height - 20);
+		
+		panelX = (this.width - panelWidth) / 2;
+		panelY = (this.height - panelHeight) / 2;
+		
+		contentWidth = panelWidth - 40; // 20px margin on each side
+		
 		int centerX = this.width / 2;
-		int contentWidth = Math.min(400, this.width - 40);
-		int leftX = centerX - contentWidth / 2;
-		int rightX = centerX + contentWidth / 2;
-		int y = CONTENT_START_Y;
+		int leftX = panelX + 20;
+		int y = panelY + CONTENT_START_OFFSET;
 		
 		// Big enabled toggle at top
 		enabledToggle = new Dex5ToggleButton(
@@ -176,7 +199,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		y += 40;
 		
 		// Action buttons at bottom
-		int buttonY = this.height - 35;
+		int buttonY = panelY + panelHeight - BOTTOM_BUTTON_MARGIN;
 		
 		resetButton = Button.builder(
 			Component.literal("Reset"),
@@ -265,30 +288,25 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		// Render transparent background first
 		renderBackground(graphics, mouseX, mouseY, partialTick);
 		
-		// Panel background (semi-transparent)
-		int panelWidth = Math.min(420, this.width - 20);
-		int panelHeight = this.height - 20;
-		int panelX = (this.width - panelWidth) / 2;
-		int panelY = 10;
-		
 		// Semi-transparent surface (80% alpha)
 		int surfaceColor = (0xCC << 24) | (Dex5Colors.SURFACE & 0x00FFFFFF);
 		graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, surfaceColor);
 		
 		// Watermark (if branding enabled and texture exists)
 		if (HAS_BRANDING) {
-			renderWatermark(graphics, panelX, panelY, panelWidth, panelHeight);
+			renderWatermark(graphics);
 		}
 		
 		// Accent border
 		drawBorder(graphics, panelX, panelY, panelWidth, panelHeight, Dex5Colors.BORDER_ACCENT);
 		
 		// Title
-		graphics.drawCenteredString(this.font, this.title, this.width / 2, TITLE_Y, Dex5Colors.PRIMARY);
+		int titleY = panelY + TITLE_OFFSET;
+		graphics.drawCenteredString(this.font, this.title, this.width / 2, titleY, Dex5Colors.PRIMARY);
 		
 		// Subtitle
 		String subtitle = canEdit ? "Configure Lightweight Physics Settings" : "View Configuration (Read-Only)";
-		graphics.drawCenteredString(this.font, subtitle, this.width / 2, TITLE_Y + 12, Dex5Colors.TEXT_SECONDARY);
+		graphics.drawCenteredString(this.font, subtitle, this.width / 2, titleY + 12, Dex5Colors.TEXT_SECONDARY);
 		
 		// Render widgets
 		super.render(graphics, mouseX, mouseY, partialTick);
@@ -299,7 +317,8 @@ public class LightweightPhysicsConfigScreen extends Screen {
 			if (elapsed < 3000) {
 				int alpha = elapsed < 2500 ? 255 : (int) (255 * (1 - (elapsed - 2500) / 500.0));
 				int color = (alpha << 24) | (statusColor & 0x00FFFFFF);
-				graphics.drawCenteredString(this.font, statusMessage, this.width / 2, this.height - 50, color);
+				int statusY = panelY + panelHeight - BOTTOM_BUTTON_MARGIN - 20;
+				graphics.drawCenteredString(this.font, statusMessage, this.width / 2, statusY, color);
 			}
 		}
 	}
@@ -332,26 +351,26 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		graphics.fill(0, 0, this.width, this.height, 0x33000000);
 	}
 	
-	private void renderWatermark(GuiGraphics graphics, int panelX, int panelY, int panelWidth, int panelHeight) {
+	private void renderWatermark(GuiGraphics graphics) {
 		try {
-			// Calculate watermark size (60% of panel width, maintain aspect ratio)
-			int watermarkWidth = (int) (panelWidth * 0.6);
-			int watermarkHeight = watermarkWidth; // Logo is square (1024x1024)
+			// Calculate watermark size to fit panel while maintaining aspect ratio
+			// Logo is square (1024x1024), scale to 50% of panel's smaller dimension
+			int maxSize = (int)(Math.min(panelWidth, panelHeight) * 0.5);
+			int watermarkSize = Math.min(maxSize, 256); // Cap at 256px
 			
 			// Center in panel
-			int x = panelX + (panelWidth - watermarkWidth) / 2;
-			int y = panelY + (panelHeight - watermarkHeight) / 2;
+			int x = panelX + (panelWidth - watermarkSize) / 2;
+			int y = panelY + (panelHeight - watermarkSize) / 2;
 			
 			// Render with low alpha
-			int alpha = (int) (WATERMARK_ALPHA * 255);
 			graphics.setColor(1.0f, 1.0f, 1.0f, WATERMARK_ALPHA);
 			
 			graphics.blit(
 				WATERMARK_TEXTURE,
 				x, y,
 				0, 0,
-				watermarkWidth, watermarkHeight,
-				watermarkWidth, watermarkHeight
+				watermarkSize, watermarkSize,
+				watermarkSize, watermarkSize
 			);
 			
 			// Reset color

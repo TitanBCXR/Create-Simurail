@@ -1,5 +1,7 @@
 package com.crystaelix.simurail.client;
 
+import org.lwjgl.glfw.GLFW;
+
 import com.crystaelix.simurail.Simurail;
 import com.crystaelix.simurail.client.config.LightweightPhysicsConfigScreen;
 
@@ -23,7 +25,7 @@ public class SimurailKeyMappings {
 	public static final KeyMapping OPEN_PHYSICS_CONFIG = new KeyMapping(
 		"key.simurail.open_physics_config",
 		KeyConflictContext.IN_GAME,
-		InputConstants.UNKNOWN, // Unbound by default
+		InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_LEFT_BRACKET),
 		CATEGORY
 	);
 	
