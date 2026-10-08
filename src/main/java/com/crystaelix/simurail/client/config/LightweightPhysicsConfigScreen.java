@@ -260,13 +260,15 @@ public class LightweightPhysicsConfigScreen extends Screen {
 		y += WIDGET_HEIGHT + WIDGET_SPACING + 10;
 		
 		// Fluid visuals toggle (client, always editable)
+		// 0=VANILLA (off), 1=CUBE (on with cube mesh)
 		fluidVisualsToggle = new Dex5ToggleButton(
 			centerX - 90, y, 180, 30,
 			Component.literal("Flowing Cubes"),
-			currentValues.fluidVisualsEnabled,
+			currentValues.fluidRenderStyle > 0,
 			button -> {
-				currentValues.fluidVisualsEnabled = !currentValues.fluidVisualsEnabled;
-				((Dex5ToggleButton) button).setState(currentValues.fluidVisualsEnabled);
+				// Toggle between VANILLA (0) and CUBE (1)
+				currentValues.fluidRenderStyle = (currentValues.fluidRenderStyle == 0) ? 1 : 0;
+				((Dex5ToggleButton) button).setState(currentValues.fluidRenderStyle > 0);
 				markDirty();
 			}
 		);

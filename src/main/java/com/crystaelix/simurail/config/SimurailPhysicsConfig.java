@@ -70,6 +70,7 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 	public final ConfigBool fluidsCurrentsEnabled = b(true, "currentsEnabled", Comments.fluidsCurrentsEnabled);
 	public final ConfigFloat fluidsCurrentStrength = f(0.04F, 0, 1, "currentStrength", Comments.fluidsCurrentStrength);
 	public final ConfigFloat fluidsBuoyancy = f(0.03F, 0, 1, "buoyancy", Comments.fluidsBuoyancy);
+	public final ConfigInt fluidsMaxMeshTriangles = i(48, 2, 256, "maxMeshTriangles", Comments.fluidsMaxMeshTriangles);
 
 	@Override
 	public String getName() {
@@ -136,5 +137,6 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 		static String fluidsCurrentsEnabled = "Enable fluid current physics. Items and lightweight bodies in water/lava are pushed by the fluid's flow direction.";
 		static String fluidsCurrentStrength = "Multiplier for fluid current force applied to items and bodies. Higher values make currents push harder.";
 		static String fluidsBuoyancy = "Buoyancy force applied to items in water. Higher values make items float more strongly toward the surface. Lava uses drag instead.";
+		static String fluidsMaxMeshTriangles = "Maximum triangle count for custom fluid meshes loaded from config/simurail/fluid_meshes/. Meshes exceeding this limit are auto-decimated or rejected.";
 	}
 }

@@ -40,7 +40,14 @@ public class FluidCubeRenderer {
 	 * Called every client tick to update and spawn cubes.
 	 */
 	public static void tick(Minecraft mc) {
-		if (!SimurailConfig.client().fluidVisualsEnabled.get()) {
+		// Check if custom rendering is enabled (0=VANILLA means no custom rendering)
+		try {
+			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
+			if (style == 0) { // VANILLA
+				activeCubes.clear();
+				return;
+			}
+		} catch (Exception e) {
 			activeCubes.clear();
 			return;
 		}
@@ -60,7 +67,13 @@ public class FluidCubeRenderer {
 	 * Render all active fluid cubes.
 	 */
 	public static void render(PoseStack poseStack, Camera camera, float partialTick) {
-		if (!SimurailConfig.client().fluidVisualsEnabled.get() || activeCubes.isEmpty()) {
+		// Check if custom rendering is enabled (0=VANILLA means no custom rendering)
+		try {
+			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
+			if (style == 0 || activeCubes.isEmpty()) { // VANILLA or no cubes
+				return;
+			}
+		} catch (Exception e) {
 			return;
 		}
 
