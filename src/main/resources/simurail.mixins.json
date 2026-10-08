@@ -24,6 +24,7 @@
 		"TravellingPointMixin",
 
 		"SubLevelEntityCollisionMixin",
+		"ItemEntityPhysicsMixin",
 
 		"compat.copycats.CopycatAutomaticCouplerBlockMixin",
 		"compat.electroenergetics.AutomaticCouplerBlockMixin",
@@ -36,7 +37,8 @@
 	"client": [
 		"DefaultPonderSceneRegistrationHelperMixin",
 		"GenericPonderSceneRegistrationHelperMixin",
-		"TrackTargetingClientMixin"
+		"TrackTargetingClientMixin",
+		"client.LiquidBlockRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

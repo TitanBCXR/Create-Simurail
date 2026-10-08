@@ -56,6 +56,22 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 	public final ConfigFloat couplerSpringFrequency = f(100, 0, Short.MAX_VALUE, "springFrequency", Units.angularVelocity, Comments.couplerSpringFrequency);
 	public final ConfigFloat couplerSpringDampingRate = f(2, 0, Short.MAX_VALUE, "springDampingRate", Comments.couplerSpringDampingRate);
 
+	public final ConfigGroup lightweight = group(1, "lightweight", "Lightweight Physics");
+	public final ConfigBool lightweightEnabled = b(true, "enabled", Comments.lightweightEnabled);
+	public final ConfigFloat lightweightActivationRadius = f(32, 0, 256, "activationRadius", Units.length, Comments.lightweightActivationRadius);
+	public final ConfigInt lightweightMaxActive = i(256, 0, 2048, "maxActive", Comments.lightweightMaxActive);
+	public final ConfigFloat lightweightSleepVelocity = f(0.05F, 0, 10, "sleepVelocity", Units.velocity, Comments.lightweightSleepVelocity);
+	public final ConfigFloat lightweightMassScale = f(0.1F, 0, 10, "massScale", Comments.lightweightMassScale);
+	public final ConfigFloat lightweightFrictionScale = f(0.5F, 0, 2, "frictionScale", Comments.lightweightFrictionScale);
+	public final ConfigInt lightweightUpdateInterval = i(4, 1, 20, "updateInterval", Comments.lightweightUpdateInterval);
+	public final ConfigBool lightweightDebugLogging = b(false, "debugLogging", Comments.lightweightDebugLogging);
+
+	public final ConfigGroup fluids = group(1, "fluids", "Fluid Physics");
+	public final ConfigBool fluidsCurrentsEnabled = b(true, "currentsEnabled", Comments.fluidsCurrentsEnabled);
+	public final ConfigFloat fluidsCurrentStrength = f(0.04F, 0, 1, "currentStrength", Comments.fluidsCurrentStrength);
+	public final ConfigFloat fluidsBuoyancy = f(0.03F, 0, 1, "buoyancy", Comments.fluidsBuoyancy);
+	public final ConfigInt fluidsMaxMeshTriangles = i(48, 2, 256, "maxMeshTriangles", Comments.fluidsMaxMeshTriangles);
+
 	@Override
 	public String getName() {
 		return "physics";
@@ -108,5 +124,19 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 		static String couplerPassiveAngularDamping = "Passive angular damping between a Train Coupler and its partner.";
 		static String couplerSpringFrequency = "Spring frequency between a Train Coupler and its partner.";
 		static String couplerSpringDampingRate = "Spring damping rate between a Train Coupler and its partner.";
+
+		static String lightweightEnabled = "Enable lightweight physics for items to ride along with moving trains.";
+		static String lightweightActivationRadius = "Maximum distance from a train at which items will be checked for sublevel tracking. (Currently unused but kept for future optimizations)";
+		static String lightweightMaxActive = "Maximum number of items that can track sublevels simultaneously. (Currently unused but kept for future optimizations)";
+		static String lightweightSleepVelocity = "Velocity threshold for sleep mode. (Currently unused but kept for future optimizations)";
+		static String lightweightMassScale = "Mass multiplier. (Currently unused but kept for future optimizations)";
+		static String lightweightFrictionScale = "Friction multiplier. (Currently unused but kept for future optimizations)";
+		static String lightweightUpdateInterval = "Number of ticks between checks for whether items should track a sublevel. Higher values save performance but reduce responsiveness.";
+		static String lightweightDebugLogging = "Enable debug logging for sublevel tracking. Logs when items start/stop tracking moving trains.";
+
+		static String fluidsCurrentsEnabled = "Enable fluid current physics. Items and lightweight bodies in water/lava are pushed by the fluid's flow direction.";
+		static String fluidsCurrentStrength = "Multiplier for fluid current force applied to items and bodies. Higher values make currents push harder.";
+		static String fluidsBuoyancy = "Buoyancy force applied to items in water. Higher values make items float more strongly toward the surface. Lava uses drag instead.";
+		static String fluidsMaxMeshTriangles = "Maximum triangle count for custom fluid meshes loaded from config/simurail/fluid_meshes/. Meshes exceeding this limit are auto-decimated or rejected.";
 	}
 }

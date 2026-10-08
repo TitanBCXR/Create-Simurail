@@ -31,3 +31,4 @@ replay_*.log
 
 # minecraft
 run
+artifacts/
