@@ -1,6 +1,7 @@
 package com.crystaelix.simurail.client.config;
 
 import com.crystaelix.simurail.Simurail;
+import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
 import com.crystaelix.simurail.network.SimurailPackets;
 import com.crystaelix.simurail.network.UpdateLightweightPhysicsConfigPacket;
 

@@ -1,7 +1,7 @@
 package com.crystaelix.simurail.network;
 
 import com.crystaelix.simurail.Simurail;
-import com.crystaelix.simurail.client.config.LightweightPhysicsConfigValues;
+import com.crystaelix.simurail.config.LightweightPhysicsConfigValues;
 
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;

@@ -1,6 +1,7 @@
-package com.crystaelix.simurail.client.config;
+package com.crystaelix.simurail.config;
 
-import com.crystaelix.simurail.config.SimurailConfig;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 
 /**
  * Snapshot of lightweight physics config values for GUI editing.
@@ -42,12 +43,10 @@ public class LightweightPhysicsConfigValues {
 		values.fluidCurrentStrength = SimurailConfig.server().physics.fluidsCurrentStrength.get().floatValue();
 		values.fluidBuoyancy = SimurailConfig.server().physics.fluidsBuoyancy.get().floatValue();
 		
-		// Fluid visuals (client)
-		values.fluidVisualsEnabled = SimurailConfig.client().fluidVisualsEnabled.get();
-		values.fluidCubesPerBlock = SimurailConfig.client().fluidVisualsCubesPerBlock.get();
-		values.fluidRenderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
-		values.fluidMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
-		values.fluidReplaceVanilla = SimurailConfig.client().fluidVisualsReplaceVanilla.get();
+		// Fluid visuals (client) - only load on client side via helper to avoid classloading client config on server
+		if (FMLEnvironment.dist == Dist.CLIENT) {
+			loadClientConfigValues(values);
+		}
 		
 		return values;
 	}
@@ -116,14 +115,35 @@ public class LightweightPhysicsConfigValues {
 		SimurailConfig.server().physics.fluidsCurrentStrength.set((double) fluidCurrentStrength);
 		SimurailConfig.server().physics.fluidsBuoyancy.set((double) fluidBuoyancy);
 		
-		// Fluid visuals (client)
-		SimurailConfig.client().fluidVisualsEnabled.set(fluidVisualsEnabled);
-		SimurailConfig.client().fluidVisualsCubesPerBlock.set(fluidCubesPerBlock);
-		SimurailConfig.client().fluidVisualsRenderRadius.set(fluidRenderRadius);
-		SimurailConfig.client().fluidVisualsMaxCubes.set(fluidMaxCubes);
-		SimurailConfig.client().fluidVisualsReplaceVanilla.set(fluidReplaceVanilla);
+		// Fluid visuals (client) - only apply on client side via helper
+		if (FMLEnvironment.dist == Dist.CLIENT) {
+			applyClientConfigValues(this);
+		}
 		
 		// Note: Config auto-saves in NeoForge, no manual save needed
+	}
+	
+	/**
+	 * Helper method that delegates to client-only class to avoid classloading client config on server.
+	 * The actual implementation is in ClientConfigHelper which is annotated @OnlyIn(Dist.CLIENT).
+	 */
+	private static void loadClientConfigValues(LightweightPhysicsConfigValues values) {
+		// This method body only executes on client, reflection ensures class isn't loaded on server
+		try {
+			Class<?> helperClass = Class.forName("com.crystaelix.simurail.client.config.ClientConfigHelper");
+			helperClass.getMethod("loadClientValues", LightweightPhysicsConfigValues.class).invoke(null, values);
+		} catch (Exception e) {
+			// Ignore on server
+		}
+	}
+	
+	private static void applyClientConfigValues(LightweightPhysicsConfigValues values) {
+		try {
+			Class<?> helperClass = Class.forName("com.crystaelix.simurail.client.config.ClientConfigHelper");
+			helperClass.getMethod("applyClientValues", LightweightPhysicsConfigValues.class).invoke(null, values);
+		} catch (Exception e) {
+			// Ignore on server
+		}
 	}
 	
 	public boolean validate() {
