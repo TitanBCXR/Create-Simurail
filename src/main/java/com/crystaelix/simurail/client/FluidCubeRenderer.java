@@ -235,19 +235,25 @@ public class FluidCubeRenderer {
 		boolean tick(Level level) {
 			age++;
 
-			if (flow.lengthSqr() > 0.001) {
+			boolean isFalling = fluidState.is(FluidTags.WATER) && 
+				level != null && 
+				level.getFluidState(blockPos.below()).isEmpty();
+			
+			if (isFalling) {
+				pos = pos.add(0, -0.08, 0);
+			} else if (flow.lengthSqr() > 0.001) {
 				double speed = 0.02 * Math.min(1.0, flow.length());
 				pos = pos.add(flow.scale(speed));
-				
-				BlockPos currentBlock = BlockPos.containing(pos);
-				double localX = pos.x - currentBlock.getX();
-				double localY = pos.y - currentBlock.getY();
-				double localZ = pos.z - currentBlock.getZ();
-				
-				if (localX < 0 || localX > 1) pos = new Vec3(currentBlock.getX() + 0.5, pos.y, pos.z);
-				if (localY < 0 || localY > 1) pos = new Vec3(pos.x, currentBlock.getY() + 0.5, pos.z);
-				if (localZ < 0 || localZ > 1) pos = new Vec3(pos.x, pos.y, currentBlock.getZ() + 0.5);
 			}
+			
+			BlockPos currentBlock = BlockPos.containing(pos);
+			double localX = pos.x - currentBlock.getX();
+			double localY = pos.y - currentBlock.getY();
+			double localZ = pos.z - currentBlock.getZ();
+			
+			if (localX < 0 || localX > 1) pos = new Vec3(currentBlock.getX() + 0.5, pos.y, pos.z);
+			if (localY < 0 || localY > 1) pos = new Vec3(pos.x, currentBlock.getY() + 0.5, pos.z);
+			if (localZ < 0 || localZ > 1) pos = new Vec3(pos.x, pos.y, currentBlock.getZ() + 0.5);
 
 			if (level != null) {
 				FluidState currentFluid = level.getFluidState(BlockPos.containing(pos));
