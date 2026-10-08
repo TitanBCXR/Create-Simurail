@@ -64,6 +64,7 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 	public final ConfigFloat lightweightMassScale = f(0.1F, 0, 10, "massScale", Comments.lightweightMassScale);
 	public final ConfigFloat lightweightFrictionScale = f(0.5F, 0, 2, "frictionScale", Comments.lightweightFrictionScale);
 	public final ConfigInt lightweightUpdateInterval = i(4, 1, 20, "updateInterval", Comments.lightweightUpdateInterval);
+	public final ConfigBool lightweightDebugLogging = b(false, "debugLogging", Comments.lightweightDebugLogging);
 
 	@Override
 	public String getName() {
@@ -118,12 +119,13 @@ public class SimurailPhysicsConfig extends SimurailBaseConfig {
 		static String couplerSpringFrequency = "Spring frequency between a Train Coupler and its partner.";
 		static String couplerSpringDampingRate = "Spring damping rate between a Train Coupler and its partner.";
 
-		static String lightweightEnabled = "Enable lightweight physics for small objects (items, entities, cargo) without requiring full multiblock structures.";
-		static String lightweightActivationRadius = "Maximum distance from a physics body (bogey, train) at which lightweight physics objects will activate.";
-		static String lightweightMaxActive = "Maximum number of lightweight physics objects that can be active simultaneously. Oldest/farthest objects deactivate first.";
-		static String lightweightSleepVelocity = "Velocity threshold below which lightweight physics objects enter sleep mode to save performance.";
-		static String lightweightMassScale = "Mass multiplier for lightweight physics objects. Lower values make objects lighter and more responsive.";
-		static String lightweightFrictionScale = "Friction multiplier for lightweight physics objects when interacting with surfaces.";
-		static String lightweightUpdateInterval = "Number of ticks between lightweight physics activation checks. Higher values save performance but reduce responsiveness.";
+		static String lightweightEnabled = "Enable lightweight physics for items to ride along with moving trains.";
+		static String lightweightActivationRadius = "Maximum distance from a train at which items will be checked for sublevel tracking. (Currently unused but kept for future optimizations)";
+		static String lightweightMaxActive = "Maximum number of items that can track sublevels simultaneously. (Currently unused but kept for future optimizations)";
+		static String lightweightSleepVelocity = "Velocity threshold for sleep mode. (Currently unused but kept for future optimizations)";
+		static String lightweightMassScale = "Mass multiplier. (Currently unused but kept for future optimizations)";
+		static String lightweightFrictionScale = "Friction multiplier. (Currently unused but kept for future optimizations)";
+		static String lightweightUpdateInterval = "Number of ticks between checks for whether items should track a sublevel. Higher values save performance but reduce responsiveness.";
+		static String lightweightDebugLogging = "Enable debug logging for sublevel tracking. Logs when items start/stop tracking moving trains.";
 	}
 }
