@@ -9,7 +9,7 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 	public final ConfigFloat wheelSlipSparkDensity = f(1, 0, 4, "sparkDensity", Comments.wheelSlipSparkDensity);
 	public final ConfigFloat wheelSlipSparkScale = f(1, 0.25F, 4, "sparkScale", Comments.wheelSlipSparkScale);
 
-	public final ConfigGroup fluidVisuals = group(1, "fluidVisuals", "Fluid Visuals");
+	public final ConfigGroup fluidVisuals = group(0, "fluidVisuals", "Fluid Visuals");
 	public final ConfigInt fluidVisualsRenderStyle = i(0, 0, 4, "renderStyle", Comments.fluidVisualsRenderStyle);
 	public final ConfigInt fluidVisualsCubesPerBlock = i(8, 1, 27, "cubesPerBlock", Comments.fluidVisualsCubesPerBlock);
 	public final ConfigInt fluidVisualsRenderRadius = i(16, 4, 64, "renderRadius", Comments.fluidVisualsRenderRadius);
