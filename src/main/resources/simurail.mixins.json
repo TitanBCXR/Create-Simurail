@@ -37,7 +37,8 @@
 	"client": [
 		"DefaultPonderSceneRegistrationHelperMixin",
 		"GenericPonderSceneRegistrationHelperMixin",
-		"TrackTargetingClientMixin"
+		"TrackTargetingClientMixin",
+		"client.LiquidBlockRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
