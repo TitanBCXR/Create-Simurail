@@ -5,7 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.joml.Quaternionf;
 
@@ -24,6 +26,7 @@ import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
@@ -51,6 +54,14 @@ public class FluidCubeRenderer {
 	private static int lastSpawnAttempts = 0;
 	private static int lastSurfaceBlocksFound = 0;
 	private static int lastDebrisRendered = 0;
+	private static int collisionsThisSecond = 0;
+	private static int despawnsThisSecond = 0;
+	private static int collisionLogTimer = 0;
+	
+	private static final float WALL_BOUNCE = 0.35F;
+	private static final float GRAVITY = 0.04F;
+	private static final float TERMINAL_VELOCITY = 0.4F;
+	private static final int SEPARATION_CHECK_CAP = 384;
 	
 	private static final float MODEL_NATIVE_EDGE = 4F / 16F;
 
@@ -89,15 +100,33 @@ public class FluidCubeRenderer {
 
 		tickCounter++;
 		debugLogTimer++;
+		collisionLogTimer++;
 		Level level = mc.level;
 		
-		// Simulate existing debris
-		debrisPool.removeIf(debris -> !debris.tick(level));
+		debrisPool.removeIf(debris -> {
+			boolean alive = debris.tick(level);
+			if (!alive) {
+				despawnsThisSecond++;
+			}
+			return !alive;
+		});
 		
-		// Deterministic spawning: scan columns in a budgeted slice
+		separateDebris();
 		spawnDebrisDeterministic(mc);
 		
-		// Debug logging every 5 seconds (100 ticks)
+		if (collisionLogTimer >= 20) {
+			try {
+				if (SimurailConfig.client().fluidVisualsDebugLogging.get()) {
+					System.out.println("[Simurail FluidCubeRenderer] collisions=" + collisionsThisSecond
+						+ "/s despawns=" + despawnsThisSecond + "/s active=" + debrisPool.size());
+				}
+			} catch (Exception e) {
+			}
+			collisionsThisSecond = 0;
+			despawnsThisSecond = 0;
+			collisionLogTimer = 0;
+		}
+		
 		if (debugLogTimer >= 100) {
 			debugLogTimer = 0;
 			try {
@@ -216,30 +245,36 @@ public class FluidCubeRenderer {
 					surfaceFound++;
 					found = true;
 					
-					// Spawn based on density probability
 					if (level.random.nextFloat() < density) {
-						float fluidHeight = fluidState.getHeight(level, mutable);
-						// Center sits on the surface so the cube is half-submerged.
-						double surfaceY = mutable.getY() + fluidHeight;
-						
-						double x = mutable.getX() + level.random.nextDouble();
-						double z = mutable.getZ() + level.random.nextDouble();
-						
 						float debrisScale = SimurailConfig.client().fluidVisualsDebrisScale.get().floatValue();
-						DebrisMotion motion = DebrisMotion.random(level.random);
-						float worldSize = debrisScale * motion.sizeVariation;
-						int lifetime = 200 + level.random.nextInt(200);
-						
-						debrisPool.add(new FloatingDebris(
-							new Vec3(x, surfaceY, z),
-							fluidState,
-							mutable.immutable(),
-							worldSize,
-							lifetime,
-							motion,
-							level.random.nextBoolean()
-						));
-						spawned++;
+						boolean spawnedHere = false;
+						for (int attempt = 0; attempt < 3 && !spawnedHere; attempt++) {
+							DebrisMotion motion = DebrisMotion.random(level.random);
+							float worldSize = debrisScale * motion.sizeVariation;
+							float half = DebrisWorldQuery.collisionHalf(worldSize);
+							double inset = Math.min(0.45, Math.max(0.08, 0.5 - half));
+							double x = mutable.getX() + 0.5 + (level.random.nextDouble() - 0.5) * 2.0 * inset;
+							double z = mutable.getZ() + 0.5 + (level.random.nextDouble() - 0.5) * 2.0 * inset;
+							double surfaceY = mutable.getY() + fluidState.getHeight(level, mutable);
+							double spawnY = surfaceY + DebrisWorldQuery.submergeOffset(worldSize);
+							
+							if (!DebrisWorldQuery.cubeFits(level, x, spawnY, z, worldSize)) {
+								continue;
+							}
+							
+							int lifetime = 200 + level.random.nextInt(200);
+							debrisPool.add(new FloatingDebris(
+								new Vec3(x, spawnY, z),
+								fluidState,
+								mutable.immutable(),
+								worldSize,
+								lifetime,
+								motion,
+								level.random.nextBoolean()
+							));
+							spawned++;
+							spawnedHere = true;
+						}
 					}
 					break;
 				}
@@ -250,6 +285,64 @@ public class FluidCubeRenderer {
 		
 		lastSpawnAttempts = scanned;
 		lastSurfaceBlocksFound = surfaceFound;
+	}
+
+	private static void separateDebris() {
+		int n = debrisPool.size();
+		if (n < 2) {
+			return;
+		}
+		Map<Long, ArrayList<Integer>> cells = new HashMap<>();
+		for (int i = 0; i < n; i++) {
+			Vec3 p = debrisPool.get(i).pos;
+			long key = BlockPos.asLong(Mth.floor(p.x), Mth.floor(p.y), Mth.floor(p.z));
+			cells.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
+		}
+		int checks = 0;
+		for (int i = 0; i < n && checks < SEPARATION_CHECK_CAP; i++) {
+			FloatingDebris a = debrisPool.get(i);
+			int ax = Mth.floor(a.pos.x);
+			int ay = Mth.floor(a.pos.y);
+			int az = Mth.floor(a.pos.z);
+			float ha = DebrisWorldQuery.collisionHalf(a.size);
+			for (int ox = -1; ox <= 1 && checks < SEPARATION_CHECK_CAP; ox++) {
+				for (int oy = -1; oy <= 1 && checks < SEPARATION_CHECK_CAP; oy++) {
+					for (int oz = -1; oz <= 1 && checks < SEPARATION_CHECK_CAP; oz++) {
+						ArrayList<Integer> bin = cells.get(BlockPos.asLong(ax + ox, ay + oy, az + oz));
+						if (bin == null) {
+							continue;
+						}
+						for (int j : bin) {
+							if (j <= i) {
+								continue;
+							}
+							checks++;
+							if (checks > SEPARATION_CHECK_CAP) {
+								return;
+							}
+							FloatingDebris b = debrisPool.get(j);
+							double dx = b.pos.x - a.pos.x;
+							double dz = b.pos.z - a.pos.z;
+							double distSq = dx * dx + dz * dz;
+							float minDist = ha + DebrisWorldQuery.collisionHalf(b.size);
+							if (distSq >= (double) minDist * minDist) {
+								continue;
+							}
+							double dist = distSq < 1.0e-8 ? 0.01 : Math.sqrt(distSq);
+							if (distSq < 1.0e-8) {
+								dx = 0.01;
+								dz = 0.0;
+							}
+							double push = (minDist - dist) * 0.25;
+							double nx = dx / dist;
+							double nz = dz / dist;
+							a.pos = a.pos.add(-nx * push, 0, -nz * push);
+							b.pos = b.pos.add(nx * push, 0, nz * push);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	private static void loadModels() {
@@ -399,33 +492,98 @@ public class FluidCubeRenderer {
 				return false;
 			}
 			
-			BlockPos currentBlock = BlockPos.containing(pos);
-			FluidState currentFluid = level.getFluidState(currentBlock);
-			
-			if (currentFluid.isEmpty()) {
+			DebrisWorldQuery.Surface surface = DebrisWorldQuery.findTopFluidSurface(
+				level, BlockPos.containing(pos));
+			if (surface == null) {
 				return false;
 			}
 			
-			Vec3 flow = currentFluid.getFlow(level, currentBlock);
+			fluidState = surface.fluid();
+			originBlock = surface.pos();
+			
+			Vec3 flow = fluidState.getFlow(level, originBlock);
 			float flowSpeed = (float) flow.length();
-			Vec3 targetFlow = flow.scale(0.05);
+			velocity = new Vec3(
+				velocity.x * 0.9 + flow.x * 0.005,
+				velocity.y,
+				velocity.z * 0.9 + flow.z * 0.005
+			);
 			
-			FluidState below = level.getFluidState(currentBlock.below());
-			boolean isFalling = below.isEmpty() || 
-				(below.is(FluidTags.WATER) && level.getFluidState(currentBlock.below().above()).isEmpty());
+			AABB box = DebrisWorldQuery.cubeBox(pos.x, pos.y, pos.z, size);
+			int fromY = originBlock.getY();
 			
-			if (isFalling) {
-				velocity = velocity.add(0, -0.04, 0);
+			double dx = velocity.x;
+			if (!DebrisWorldQuery.canEnterColumn(level, pos.x + dx, pos.z, fromY)) {
+				dx = 0;
+				velocity = new Vec3(-velocity.x * WALL_BOUNCE, velocity.y, velocity.z);
+				collisionsThisSecond++;
 			} else {
-				velocity = velocity.scale(0.9).add(targetFlow.scale(0.1));
-				
-				float fluidHeight = currentFluid.getHeight(level, currentBlock);
-				double targetY = currentBlock.getY() + fluidHeight + motion.bobOffset(age, size);
-				double dy = (targetY - pos.y) * 0.1;
-				velocity = new Vec3(velocity.x, dy, velocity.z);
+				double clippedX = DebrisWorldQuery.collideAxis(level, box, Direction.Axis.X, dx);
+				if (Math.abs(clippedX) + 1.0e-4 < Math.abs(dx)) {
+					velocity = new Vec3(-velocity.x * WALL_BOUNCE, velocity.y, velocity.z);
+					collisionsThisSecond++;
+				}
+				dx = clippedX;
+			}
+			pos = new Vec3(pos.x + dx, pos.y, pos.z);
+			box = DebrisWorldQuery.cubeBox(pos.x, pos.y, pos.z, size);
+			
+			double dz = velocity.z;
+			if (!DebrisWorldQuery.canEnterColumn(level, pos.x, pos.z + dz, fromY)) {
+				dz = 0;
+				velocity = new Vec3(velocity.x, velocity.y, -velocity.z * WALL_BOUNCE);
+				collisionsThisSecond++;
+			} else {
+				double clippedZ = DebrisWorldQuery.collideAxis(level, box, Direction.Axis.Z, dz);
+				if (Math.abs(clippedZ) + 1.0e-4 < Math.abs(dz)) {
+					velocity = new Vec3(velocity.x, velocity.y, -velocity.z * WALL_BOUNCE);
+					collisionsThisSecond++;
+				}
+				dz = clippedZ;
+			}
+			pos = new Vec3(pos.x, pos.y, pos.z + dz);
+			
+			surface = DebrisWorldQuery.findTopFluidSurface(level, BlockPos.containing(pos));
+			if (surface == null) {
+				return false;
+			}
+			fluidState = surface.fluid();
+			originBlock = surface.pos();
+			
+			double restingY = surface.y() + DebrisWorldQuery.submergeOffset(size);
+			float bobAmp = DebrisWorldQuery.bobAmplitude(size);
+			double bob = motion.bobOffset(age, size);
+			double floatY = Math.max(restingY + bob, restingY - bobAmp);
+			boolean falling = DebrisWorldQuery.isDrop(surface, pos.y) || pos.y > restingY + 0.5;
+			
+			if (falling) {
+				velocity = new Vec3(velocity.x, Math.max(velocity.y - GRAVITY, -TERMINAL_VELOCITY), velocity.z);
+			} else if (pos.y < restingY - 0.25) {
+				velocity = new Vec3(velocity.x, Math.max(velocity.y, 0.08), velocity.z);
+			} else {
+				velocity = new Vec3(velocity.x, (floatY - pos.y) * 0.25, velocity.z);
 			}
 			
-			pos = pos.add(velocity);
+			box = DebrisWorldQuery.cubeBox(pos.x, pos.y, pos.z, size);
+			double dy = velocity.y;
+			double clippedY = DebrisWorldQuery.collideAxis(level, box, Direction.Axis.Y, dy);
+			if (dy < 0 && Math.abs(clippedY) + 1.0e-4 < Math.abs(dy)) {
+				DebrisWorldQuery.Surface floorFluid = DebrisWorldQuery.findTopFluidSurface(
+					level, BlockPos.containing(pos.x, pos.y + clippedY, pos.z));
+				if (floorFluid == null) {
+					return false;
+				}
+				collisionsThisSecond++;
+				velocity = new Vec3(velocity.x, 0, velocity.z);
+			}
+			pos = new Vec3(pos.x, pos.y + clippedY, pos.z);
+			
+			if (pos.y < restingY - bobAmp) {
+				pos = new Vec3(pos.x, restingY - bobAmp, pos.z);
+				if (velocity.y < 0) {
+					velocity = new Vec3(velocity.x, 0, velocity.z);
+				}
+			}
 			
 			float spinSpeed = SimurailConfig.client().fluidVisualsDebrisSpinSpeed.get().floatValue();
 			motion.tick(flowSpeed, spinSpeed);

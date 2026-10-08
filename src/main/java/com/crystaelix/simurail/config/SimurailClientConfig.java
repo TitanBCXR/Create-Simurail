@@ -41,6 +41,6 @@ public class SimurailClientConfig extends SimurailBaseConfig {
 		static String fluidVisualsMaxCubes = "Maximum number of cubes to render at once. Farthest cubes are removed first when limit is reached.";
 		static String fluidVisualsMaxTriangles = "Maximum total triangle count for all rendered fluid meshes. Reduces cube count automatically if mesh * cubes exceeds this budget.";
 		static String fluidVisualsReplaceVanilla = "Hide vanilla fluid rendering (not recommended). If false (default), cubes overlay on vanilla fluids.";
-		static String fluidVisualsDebugLogging = "Log fluid renderer diagnostics every 5 seconds (active cubes, spawn attempts, render count).";
+		static String fluidVisualsDebugLogging = "Log fluid renderer diagnostics: collisions/despawns per second, plus active/spawn stats every 5 seconds.";
 	}
 }
