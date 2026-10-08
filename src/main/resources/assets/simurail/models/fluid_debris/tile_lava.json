@@ -1,0 +1,22 @@
+{
+	"parent": "minecraft:block/block",
+	"textures": {
+		"particle": "#fluid",
+		"all": "#fluid",
+		"fluid": "minecraft:block/lava_still"
+	},
+	"elements": [
+		{
+			"from": [4, 7, 4],
+			"to": [12, 9, 12],
+			"faces": {
+				"down": {"uv": [4, 4, 12, 12], "texture": "#all"},
+				"up": {"uv": [4, 4, 12, 12], "texture": "#all"},
+				"north": {"uv": [4, 7, 12, 9], "texture": "#all"},
+				"south": {"uv": [4, 7, 12, 9], "texture": "#all"},
+				"west": {"uv": [4, 7, 12, 9], "texture": "#all"},
+				"east": {"uv": [4, 7, 12, 9], "texture": "#all"}
+			}
+		}
+	]
+}

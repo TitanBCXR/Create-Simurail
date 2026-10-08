@@ -58,6 +58,9 @@ public class FluidCubeRenderer {
 	private static BakedModel cubeModel;
 	private static BakedModel dropletModel;
 	private static BakedModel tileModel;
+	private static BakedModel cubeLavaModel;
+	private static BakedModel dropletLavaModel;
+	private static BakedModel tileLavaModel;
 	private static boolean modelsLoaded = false;
 	
 	private static boolean readmeWritten = false;
@@ -250,20 +253,35 @@ public class FluidCubeRenderer {
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet")));
 			tileModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
 				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile")));
+			cubeLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/cube_lava")));
+			dropletLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/droplet_lava")));
+			tileLavaModel = mc.getModelManager().getModel(ModelResourceLocation.standalone(
+				ResourceLocation.fromNamespaceAndPath("simurail", "fluid_debris/tile_lava")));
 			modelsLoaded = true;
 		} catch (Exception e) {
 			System.err.println("[Simurail] Failed to load fluid debris models: " + e.getMessage());
 		}
 	}
 
-	private static BakedModel getSelectedModel() {
+	private static BakedModel getSelectedModel(boolean isLava) {
 		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-		return switch (style) {
-			case 1 -> cubeModel != null ? cubeModel : null;
-			case 2 -> dropletModel != null ? dropletModel : null;
-			case 3 -> tileModel != null ? tileModel : null;
-			default -> cubeModel;
-		};
+		if (isLava) {
+			return switch (style) {
+				case 1 -> cubeLavaModel != null ? cubeLavaModel : null;
+				case 2 -> dropletLavaModel != null ? dropletLavaModel : null;
+				case 3 -> tileLavaModel != null ? tileLavaModel : null;
+				default -> cubeLavaModel;
+			};
+		} else {
+			return switch (style) {
+				case 1 -> cubeModel != null ? cubeModel : null;
+				case 2 -> dropletModel != null ? dropletModel : null;
+				case 3 -> tileModel != null ? tileModel : null;
+				default -> cubeModel;
+			};
+		}
 	}
 
 	private static void writeReadme() {
@@ -410,7 +428,8 @@ public class FluidCubeRenderer {
 
 		void render(PoseStack poseStack, MultiBufferSource bufferSource, Vec3 camPos, 
 		            float partialTick, Level level) {
-			BakedModel model = getSelectedModel();
+			boolean isLava = fluidState.is(FluidTags.LAVA);
+			BakedModel model = getSelectedModel(isLava);
 			if (model == null) return;
 			
 			Vec3 renderPos = getRenderPos(partialTick);
