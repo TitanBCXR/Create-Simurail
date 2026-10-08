@@ -7,17 +7,18 @@ import org.joml.Matrix4f;
 
 import com.crystaelix.simurail.client.fluid.FluidMesh;
 import com.crystaelix.simurail.config.SimurailConfig;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -25,10 +26,11 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 
 /**
  * Client-side renderer for flowing fluid cubes.
- * Renders small animated cubes that flow along fluid currents.
+ * Renders small animated cubes with real fluid textures that flow along fluid currents.
  * This is purely visual and creates no server-side physics bodies.
  */
 @OnlyIn(Dist.CLIENT)
@@ -37,7 +39,6 @@ public class FluidCubeRenderer {
 	private static final List<FluidCube> activeCubes = new ArrayList<>();
 	private static int tickCounter = 0;
 	
-	// Cached meshes for each render style
 	private static FluidMesh cubeMesh;
 	private static FluidMesh dropletMesh;
 	private static FluidMesh tileMesh;
@@ -52,10 +53,9 @@ public class FluidCubeRenderer {
 	 * Called every client tick to update and spawn cubes.
 	 */
 	public static void tick(Minecraft mc) {
-		// Check if custom rendering is enabled (0=VANILLA means no custom rendering)
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0) { // VANILLA
+			if (style == 0) {
 				activeCubes.clear();
 				return;
 			}
@@ -65,24 +65,20 @@ public class FluidCubeRenderer {
 		}
 
 		tickCounter++;
-
-		// Update existing cubes
 		activeCubes.removeIf(cube -> !cube.tick(mc.level));
 
-		// Spawn new cubes periodically
 		if (tickCounter % 2 == 0 && mc.player != null && mc.level != null) {
 			spawnCubes(mc);
 		}
 	}
 
 	/**
-	 * Render all active fluid cubes.
+	 * Render all active fluid cubes with textures.
 	 */
 	public static void render(PoseStack poseStack, Camera camera, float partialTick) {
-		// Check if custom rendering is enabled (0=VANILLA means no custom rendering)
 		try {
 			int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
-			if (style == 0 || activeCubes.isEmpty()) { // VANILLA or no cubes
+			if (style == 0 || activeCubes.isEmpty()) {
 				return;
 			}
 		} catch (Exception e) {
@@ -90,43 +86,26 @@ public class FluidCubeRenderer {
 		}
 
 		Vec3 camPos = camera.getPosition();
-		
-		RenderSystem.enableBlend();
-		RenderSystem.defaultBlendFunc();
-		RenderSystem.setShader(GameRenderer::getPositionColorShader);
-		RenderSystem.depthMask(true);
-		
-		Tesselator tesselator = Tesselator.getInstance();
 		Matrix4f matrix = poseStack.last().pose();
-		
-		BufferBuilder buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+		Minecraft mc = Minecraft.getInstance();
+		MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
 		
 		for (FluidCube cube : activeCubes) {
-			cube.render(buffer, matrix, camPos, partialTick);
+			cube.render(bufferSource, matrix, camPos, partialTick, mc.level);
 		}
 		
-		// Upload and draw the mesh
-		var builtBuffer = buffer.buildOrThrow();
-		com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(builtBuffer);
-		
-		RenderSystem.disableBlend();
+		bufferSource.endBatch();
 	}
 
-	/**
-	 * Spawn new cubes near the player.
-	 */
 	private static void spawnCubes(Minecraft mc) {
-		// Get current mesh and its triangle count
 		FluidMesh currentMesh = getSelectedMesh();
 		int meshTriangles = currentMesh.getTriangleCount();
 		
-		// Enforce triangle budget: reduce max cubes to fit within clientMaxFluidTriangles
 		int configMaxCubes = SimurailConfig.client().fluidVisualsMaxCubes.get();
 		int maxTriangles = SimurailConfig.client().fluidVisualsMaxTriangles.get();
 		int effectiveMaxCubes = Math.min(configMaxCubes, maxTriangles / Math.max(1, meshTriangles));
 		
 		if (activeCubes.size() >= effectiveMaxCubes) {
-			// Remove farthest cubes
 			Vec3 playerPos = mc.player.position();
 			activeCubes.sort((a, b) -> Double.compare(
 				b.pos.distanceToSqr(playerPos.x, playerPos.y, playerPos.z),
@@ -144,7 +123,6 @@ public class FluidCubeRenderer {
 		BlockPos playerPos = mc.player.blockPosition();
 		Level level = mc.level;
 
-		// Sample a few random blocks near the player
 		for (int i = 0; i < 8; i++) {
 			int dx = level.random.nextInt(renderRadius * 2) - renderRadius;
 			int dy = level.random.nextInt(8) - 4;
@@ -153,38 +131,36 @@ public class FluidCubeRenderer {
 			BlockPos pos = playerPos.offset(dx, dy, dz);
 			FluidState fluidState = level.getFluidState(pos);
 			
-			if (fluidState.isEmpty()) {
+			if (fluidState.isEmpty() || !isFluidExposed(level, pos)) {
 				continue;
 			}
 
-			// Only spawn cubes for exposed fluid blocks
-			if (!isFluidExposed(level, pos)) {
-				continue;
-			}
-
-			// Spawn a cube (or multiple for subdivision)
 			Vec3 flow = fluidState.getFlow(level, pos);
-			int color = getFluidColor(level, pos, fluidState);
 			
-		// Spawn one cube per subdivision cell
-		for (int sx = 0; sx < subdivision; sx++) {
-			for (int sy = 0; sy < subdivision; sy++) {
-				for (int sz = 0; sz < subdivision; sz++) {
-					if (activeCubes.size() >= effectiveMaxCubes) {
-						return;
-					}
+			for (int sx = 0; sx < subdivision; sx++) {
+				for (int sy = 0; sy < subdivision; sy++) {
+					for (int sz = 0; sz < subdivision; sz++) {
+						if (activeCubes.size() >= effectiveMaxCubes) {
+							return;
+						}
 						
 						double cubeSize = 1.0 / subdivision;
 						double offsetX = pos.getX() + sx * cubeSize + cubeSize * 0.5;
 						double offsetY = pos.getY() + sy * cubeSize + cubeSize * 0.5;
 						double offsetZ = pos.getZ() + sz * cubeSize + cubeSize * 0.5;
 						
+						float uvOffsetX = sx * (float)cubeSize;
+						float uvOffsetZ = sz * (float)cubeSize;
+						
 						activeCubes.add(new FluidCube(
 							new Vec3(offsetX, offsetY, offsetZ),
 							flow,
-							color,
-							cubeSize * 0.8, // Slightly smaller for visual gap
-							level.random.nextFloat() * 20f // Random phase for animation
+							fluidState,
+							pos,
+							cubeSize * 0.8,
+							level.random.nextFloat() * 20f,
+							uvOffsetX,
+							uvOffsetZ
 						));
 					}
 				}
@@ -192,29 +168,21 @@ public class FluidCubeRenderer {
 		}
 	}
 
-	/**
-	 * Get the currently selected fluid mesh based on config.
-	 */
 	private static FluidMesh getSelectedMesh() {
 		int style = SimurailConfig.client().fluidVisualsRenderStyle.get();
 		return switch (style) {
-			case 1 -> cubeMesh;      // CUBE
-			case 2 -> dropletMesh;   // DROPLET
-			case 3 -> tileMesh;      // TILE
-			default -> cubeMesh;     // Fallback to cube
+			case 1 -> cubeMesh;
+			case 2 -> dropletMesh;
+			case 3 -> tileMesh;
+			default -> cubeMesh;
 		};
 	}
 	
-	/**
-	 * Check if a fluid block has any exposed faces (not fully surrounded).
-	 */
 	private static boolean isFluidExposed(Level level, BlockPos pos) {
-		// Check if any neighbor is air or non-full block
 		for (int dx = -1; dx <= 1; dx++) {
 			for (int dy = -1; dy <= 1; dy++) {
 				for (int dz = -1; dz <= 1; dz++) {
 					if (dx == 0 && dy == 0 && dz == 0) continue;
-					
 					BlockPos neighbor = pos.offset(dx, dy, dz);
 					if (level.getFluidState(neighbor).isEmpty() || 
 						!level.getBlockState(neighbor).isSolidRender(level, neighbor)) {
@@ -226,91 +194,105 @@ public class FluidCubeRenderer {
 		return false;
 	}
 
-	/**
-	 * Get the color of a fluid at a position (biome-tinted for water, emissive for lava).
-	 */
-	private static int getFluidColor(Level level, BlockPos pos, FluidState fluidState) {
-		if (fluidState.is(FluidTags.WATER)) {
-			// Get biome water color
-			Biome biome = level.getBiome(pos).value();
-			int waterColor = biome.getWaterColor();
-			int r = (waterColor >> 16) & 0xFF;
-			int g = (waterColor >> 8) & 0xFF;
-			int b = waterColor & 0xFF;
-			return (180 << 24) | (r << 16) | (g << 8) | b; // 70% alpha
-		} else if (fluidState.is(FluidTags.LAVA)) {
-			// Lava: bright orange-red, full alpha
-			return (255 << 24) | (255 << 16) | (100 << 8) | 20;
-		}
-		
-		// Default: translucent blue
-		return (180 << 24) | (50 << 16) | (50 << 8) | 255;
-	}
-
-	/**
-	 * A single flowing cube particle.
-	 */
 	private static class FluidCube {
 		Vec3 pos;
+		Vec3 originalPos;
 		Vec3 flow;
-		int color;
+		FluidState fluidState;
+		BlockPos blockPos;
 		double size;
 		float age;
+		float bobPhase;
+		float uvOffsetX;
+		float uvOffsetZ;
 
-		FluidCube(Vec3 pos, Vec3 flow, int color, double size, float age) {
+		FluidCube(Vec3 pos, Vec3 flow, FluidState fluidState, BlockPos blockPos, 
+		          double size, float bobPhase, float uvOffsetX, float uvOffsetZ) {
 			this.pos = pos;
+			this.originalPos = pos;
 			this.flow = flow;
-			this.color = color;
+			this.fluidState = fluidState;
+			this.blockPos = blockPos;
 			this.size = size;
-			this.age = age;
+			this.age = 0;
+			this.bobPhase = bobPhase;
+			this.uvOffsetX = uvOffsetX;
+			this.uvOffsetZ = uvOffsetZ;
 		}
 
 		boolean tick(Level level) {
 			age++;
 
-			// Animate along flow direction with wrapping
 			if (flow.lengthSqr() > 0.001) {
-				double speed = 0.02;
-				Vec3 movement = flow.scale(speed);
-				pos = pos.add(movement);
-
-				// Wrap position within block bounds
-				BlockPos blockPos = BlockPos.containing(pos);
-				double localX = pos.x - blockPos.getX();
-				double localY = pos.y - blockPos.getY();
-				double localZ = pos.z - blockPos.getZ();
-
-				if (localX < 0 || localX > 1) {
-					pos = new Vec3(blockPos.getX() + 0.5, pos.y, pos.z);
-				}
-				if (localY < 0 || localY > 1) {
-					pos = new Vec3(pos.x, blockPos.getY() + 0.5, pos.z);
-				}
-				if (localZ < 0 || localZ > 1) {
-					pos = new Vec3(pos.x, pos.y, blockPos.getZ() + 0.5);
-				}
+				double speed = 0.02 * Math.min(1.0, flow.length());
+				pos = pos.add(flow.scale(speed));
+				
+				BlockPos currentBlock = BlockPos.containing(pos);
+				double localX = pos.x - currentBlock.getX();
+				double localY = pos.y - currentBlock.getY();
+				double localZ = pos.z - currentBlock.getZ();
+				
+				if (localX < 0 || localX > 1) pos = new Vec3(currentBlock.getX() + 0.5, pos.y, pos.z);
+				if (localY < 0 || localY > 1) pos = new Vec3(pos.x, currentBlock.getY() + 0.5, pos.z);
+				if (localZ < 0 || localZ > 1) pos = new Vec3(pos.x, pos.y, currentBlock.getZ() + 0.5);
 			}
 
-			// Check if still in fluid
 			if (level != null) {
-				FluidState fluidState = level.getFluidState(BlockPos.containing(pos));
-				if (fluidState.isEmpty()) {
-					return false; // Remove cube
+				FluidState currentFluid = level.getFluidState(BlockPos.containing(pos));
+				if (currentFluid.isEmpty()) {
+					return false;
 				}
 			}
 
-			// Lifetime limit
-			return age < 300; // 15 seconds at 20 tps
+			return age < 300;
 		}
 
-		void render(BufferBuilder buffer, Matrix4f matrix, Vec3 camPos, float partialTick) {
+		void render(MultiBufferSource bufferSource, Matrix4f matrix, Vec3 camPos, 
+		            float partialTick, Level level) {
 			float x = (float)(pos.x - camPos.x);
 			float y = (float)(pos.y - camPos.y);
 			float z = (float)(pos.z - camPos.z);
 			
-			// Use selected mesh to render
+			float bob = 0;
+			if (flow.lengthSqr() < 0.001 && fluidState.is(FluidTags.WATER)) {
+				bob = (float) (Math.sin((age + partialTick + bobPhase) * 0.1) * 0.02);
+				y += bob;
+			}
+			
+			IClientFluidTypeExtensions fluidExtensions = IClientFluidTypeExtensions.of(fluidState);
+			ResourceLocation textureLocation = flow.lengthSqr() > 0.001 ? 
+				fluidExtensions.getFlowingTexture() : fluidExtensions.getStillTexture();
+			
+			TextureAtlasSprite sprite = Minecraft.getInstance()
+				.getTextureAtlas(TextureAtlas.LOCATION_BLOCKS)
+				.apply(textureLocation);
+			
+			int color;
+			int light;
+			RenderType renderType;
+			
+			if (fluidState.is(FluidTags.WATER)) {
+				Biome biome = level.getBiome(blockPos).value();
+				int waterColor = biome.getWaterColor();
+				int r = (waterColor >> 16) & 0xFF;
+				int g = (waterColor >> 8) & 0xFF;
+				int b = waterColor & 0xFF;
+				color = (180 << 24) | (r << 16) | (g << 8) | b;
+				light = LevelRenderer.getLightColor(level, blockPos);
+				renderType = RenderType.translucent();
+			} else if (fluidState.is(FluidTags.LAVA)) {
+				color = (255 << 24) | (255 << 16) | (100 << 8) | 20;
+				light = 0xF000F0;
+				renderType = RenderType.solid();
+			} else {
+				color = (180 << 24) | (50 << 16) | (50 << 8) | 255;
+				light = LevelRenderer.getLightColor(level, blockPos);
+				renderType = RenderType.translucent();
+			}
+			
+			VertexConsumer buffer = bufferSource.getBuffer(renderType);
 			FluidMesh mesh = getSelectedMesh();
-			mesh.render(buffer, matrix, x, y, z, (float)size, color);
+			mesh.renderTextured(buffer, matrix, x, y, z, (float)size, sprite, color, light, uvOffsetX, uvOffsetZ);
 		}
 	}
 }

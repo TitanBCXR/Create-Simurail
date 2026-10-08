@@ -3,6 +3,9 @@ package com.crystaelix.simurail.client.fluid;
 import org.joml.Matrix4f;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 /**
  * Represents a mesh for rendering fluid elements.
@@ -11,17 +14,23 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 public class FluidMesh {
 	
 	private final float[] vertices; // x, y, z per vertex
+	private final float[] uvs; // u, v per vertex (optional, null for color-only)
 	private final int[] indices; // Triangle indices
 	private final int triangleCount;
 	
 	public FluidMesh(float[] vertices, int[] indices) {
+		this(vertices, null, indices);
+	}
+	
+	public FluidMesh(float[] vertices, float[] uvs, int[] indices) {
 		this.vertices = vertices;
+		this.uvs = uvs;
 		this.indices = indices;
 		this.triangleCount = indices.length / 3;
 	}
 	
 	/**
-	 * Render this mesh at the given position with the given color.
+	 * Render this mesh at the given position with the given color (no texture).
 	 */
 	public void render(BufferBuilder buffer, Matrix4f matrix, float x, float y, float z, float scale, int color) {
 		int r = (color >> 16) & 0xFF;
@@ -56,25 +65,77 @@ public class FluidMesh {
 		}
 	}
 	
+	/**
+	 * Render this mesh with texture coordinates, tint color, and lighting.
+	 */
+	public void renderTextured(VertexConsumer buffer, Matrix4f matrix, float x, float y, float z, float scale, 
+	                            TextureAtlasSprite sprite, int color, int light, float u0, float v0) {
+		int r = (color >> 16) & 0xFF;
+		int g = (color >> 8) & 0xFF;
+		int b = color & 0xFF;
+		int a = (color >> 24) & 0xFF;
+		
+		float minU = sprite.getU0();
+		float maxU = sprite.getU1();
+		float minV = sprite.getV0();
+		float maxV = sprite.getV1();
+		
+		// Render triangles with UVs
+		for (int i = 0; i < indices.length; i += 3) {
+			for (int j = 0; j < 3; j++) {
+				int idx = indices[i + j];
+				int vIdx = idx * 3;
+				int uvIdx = idx * 2;
+				
+				float vx = x + vertices[vIdx] * scale;
+				float vy = y + vertices[vIdx + 1] * scale;
+				float vz = z + vertices[vIdx + 2] * scale;
+				
+				float u, v;
+				if (uvs != null && uvIdx + 1 < uvs.length) {
+					// Use scaled UV from sub-cube position
+					u = minU + (maxU - minU) * (uvs[uvIdx] + u0);
+					v = minV + (maxV - minV) * (uvs[uvIdx + 1] + v0);
+				} else {
+					u = minU;
+					v = minV;
+				}
+				
+				buffer.addVertex(matrix, vx, vy, vz)
+					.setColor(r, g, b, a)
+					.setUv(u, v)
+					.setLight(light)
+					.setNormal(0, 1, 0);
+			}
+		}
+	}
+	
 	public int getTriangleCount() {
 		return triangleCount;
 	}
 	
 	/**
-	 * Create a cube mesh (default).
+	 * Create a cube mesh (default) with UV coordinates.
 	 */
 	public static FluidMesh createCube() {
 		float[] vertices = {
-			// Back face
+			// Back face (0-3)
 			-0.5f, -0.5f, -0.5f,
 			 0.5f, -0.5f, -0.5f,
 			 0.5f,  0.5f, -0.5f,
 			-0.5f,  0.5f, -0.5f,
-			// Front face
+			// Front face (4-7)
 			-0.5f, -0.5f,  0.5f,
 			 0.5f, -0.5f,  0.5f,
 			 0.5f,  0.5f,  0.5f,
 			-0.5f,  0.5f,  0.5f,
+		};
+		
+		float[] uvs = {
+			// Back face
+			0, 0,  1, 0,  1, 1,  0, 1,
+			// Front face
+			0, 0,  1, 0,  1, 1,  0, 1,
 		};
 		
 		int[] indices = {
@@ -92,28 +153,39 @@ public class FluidMesh {
 			3, 2, 6, 3, 6, 7
 		};
 		
-		return new FluidMesh(vertices, indices);
+		return new FluidMesh(vertices, uvs, indices);
 	}
 	
 	/**
-	 * Create a droplet mesh (low-poly water drop).
+	 * Create a droplet mesh (low-poly water drop) with UV coordinates.
 	 */
 	public static FluidMesh createDroplet() {
 		float[] vertices = {
-			// Top point
+			// Top point (0)
 			0.0f, 0.5f, 0.0f,
-			// Upper ring (4 verts)
+			// Upper ring (1-4)
 			0.3f, 0.2f, 0.0f,
 			0.0f, 0.2f, 0.3f,
 			-0.3f, 0.2f, 0.0f,
 			0.0f, 0.2f, -0.3f,
-			// Lower ring (4 verts)
+			// Lower ring (5-8)
 			0.4f, -0.2f, 0.0f,
 			0.0f, -0.2f, 0.4f,
 			-0.4f, -0.2f, 0.0f,
 			0.0f, -0.2f, -0.4f,
-			// Bottom point
+			// Bottom point (9)
 			0.0f, -0.5f, 0.0f,
+		};
+		
+		float[] uvs = {
+			// Top
+			0.5f, 0.5f,
+			// Upper ring
+			1, 0.5f,  0.5f, 1,  0, 0.5f,  0.5f, 0,
+			// Lower ring
+			1, 0.5f,  0.5f, 1,  0, 0.5f,  0.5f, 0,
+			// Bottom
+			0.5f, 0.5f,
 		};
 		
 		int[] indices = {
@@ -134,11 +206,11 @@ public class FluidMesh {
 			9, 5, 8,
 		};
 		
-		return new FluidMesh(vertices, indices);
+		return new FluidMesh(vertices, uvs, indices);
 	}
 	
 	/**
-	 * Create a flat tile mesh (minimal geometry).
+	 * Create a flat tile mesh (minimal geometry) with UV coordinates.
 	 */
 	public static FluidMesh createTile() {
 		float[] vertices = {
@@ -148,12 +220,16 @@ public class FluidMesh {
 			-0.5f, 0.0f,  0.5f,
 		};
 		
+		float[] uvs = {
+			0, 0,  1, 0,  1, 1,  0, 1,
+		};
+		
 		int[] indices = {
 			0, 1, 2,
 			0, 2, 3,
 		};
 		
-		return new FluidMesh(vertices, indices);
+		return new FluidMesh(vertices, uvs, indices);
 	}
 	
 	/**
@@ -164,7 +240,6 @@ public class FluidMesh {
 			return mesh;
 		}
 		
-		// Simple decimation: keep every Nth triangle
 		int keepEvery = (int) Math.ceil((double) mesh.triangleCount / maxTriangles);
 		int newTriCount = (mesh.triangleCount + keepEvery - 1) / keepEvery;
 		
@@ -180,6 +255,6 @@ public class FluidMesh {
 			}
 		}
 		
-		return new FluidMesh(mesh.vertices, newIndices);
+		return new FluidMesh(mesh.vertices, mesh.uvs, newIndices);
 	}
 }
