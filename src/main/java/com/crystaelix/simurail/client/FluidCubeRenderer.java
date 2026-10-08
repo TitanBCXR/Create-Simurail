@@ -91,6 +91,16 @@ public class FluidCubeRenderer {
 		MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
 		
 		for (FluidCube cube : activeCubes) {
+			double dx = cube.pos.x - camPos.x;
+			double dy = cube.pos.y - camPos.y;
+			double dz = cube.pos.z - camPos.z;
+			double distSq = dx * dx + dy * dy + dz * dz;
+			
+			int renderRadius = SimurailConfig.client().fluidVisualsRenderRadius.get();
+			if (distSq > renderRadius * renderRadius) {
+				continue;
+			}
+			
 			cube.render(bufferSource, matrix, camPos, partialTick, mc.level);
 		}
 		
