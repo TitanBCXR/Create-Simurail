@@ -19,11 +19,19 @@ public class Dex5Slider extends AbstractSliderButton {
 	private final double maxValue;
 	private final Consumer<Double> onChange;
 	private final boolean isInteger;
+	private final boolean forceDecimal;
 	
 	public Dex5Slider(int x, int y, int width, int height, 
 	                   Component prefix, Component suffix,
 	                   double minValue, double maxValue, double initialValue,
 	                   Consumer<Double> onChange) {
+		this(x, y, width, height, prefix, suffix, minValue, maxValue, initialValue, onChange, false);
+	}
+	
+	public Dex5Slider(int x, int y, int width, int height, 
+	                   Component prefix, Component suffix,
+	                   double minValue, double maxValue, double initialValue,
+	                   Consumer<Double> onChange, boolean forceDecimal) {
 		super(x, y, width, height, Component.empty(), 
 		      (initialValue - minValue) / (maxValue - minValue));
 		this.prefix = prefix;
@@ -31,7 +39,8 @@ public class Dex5Slider extends AbstractSliderButton {
 		this.minValue = minValue;
 		this.maxValue = maxValue;
 		this.onChange = onChange;
-		this.isInteger = (minValue == Math.floor(minValue) && maxValue == Math.floor(maxValue));
+		this.forceDecimal = forceDecimal;
+		this.isInteger = !forceDecimal && (minValue == Math.floor(minValue) && maxValue == Math.floor(maxValue));
 		updateMessage();
 	}
 	
