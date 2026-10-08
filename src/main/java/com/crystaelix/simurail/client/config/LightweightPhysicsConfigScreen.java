@@ -362,13 +362,7 @@ public class LightweightPhysicsConfigScreen extends Screen {
 	}
 	
 	private static boolean checkBranding() {
-		// Check if titan branding is enabled via system property or resource existence
-		String brandingProp = System.getProperty("simurail.titanBranding", "false");
-		if (!"true".equalsIgnoreCase(brandingProp)) {
-			return false;
-		}
-		
-		// Also verify texture exists
+		// Check if titan branding texture exists in jar
 		try {
 			Minecraft.getInstance().getResourceManager()
 				.getResource(WATERMARK_TEXTURE);
