@@ -1,15 +1,7 @@
-# Create-Simurail: Non-Multiblock Physics Implementation
-## Final Implementation Report
+# Non-Multiblock Physics Implementation - Technical Summary
 
-### Task Completion Summary
-
-✅ **All goals achieved:**
-
-1. ✅ **Investigated multiblock requirement** - Root cause identified and documented
-2. ✅ **Designed and implemented solution** - Lightweight physics system with proximity-based activation
-3. ✅ **Performance optimization pass** - Reduced allocations, added sleeping, staggered updates
-4. ✅ **Build passes** - `./gradlew build` successful
-5. ✅ **Pull request created** - [PR #1](https://github.com/TitanBCXR/Create-Simurail/pull/1) against TitanBCXR/Create-Simurail
+This document provides technical details for the lightweight physics implementation in Create-Simurail.
+For full PR discussion, see: https://github.com/TitanBCXR/Create-Simurail/pull/1
 
 ---
 
@@ -191,16 +183,17 @@ The multiblock requirement **is NOT a Simurail bug** - it's an architectural con
 
 ### Performance Profile
 
-**Target**: <5ms frame time impact with 100+ items near trains
+**Design Target**: <5ms frame time impact with 100+ items near trains *(not yet measured - requires in-game testing)*
 
-**Estimated costs** (per active object per tick):
+**Theoretical costs** (per active object per tick):
 - Activation check (staggered): ~0.01ms every 4 ticks = 0.0025ms/tick amortized
 - Physics update: ~0.02ms (Sable overhead)
 - Velocity blend: ~0.001ms
 - **Total: ~0.023ms per active object per tick**
 
-**100 items**: ~2.3ms frame impact ✅ (within target)
-**256 items** (max): ~5.9ms frame impact ⚠️ (slightly over target, but cap prevents more)
+**Projected** (unmeasured):
+- 100 items: ~2.3ms frame impact (if theory holds)
+- 256 items (max): ~5.9ms frame impact (if theory holds)
 
 ### Existing Performance Patterns Preserved:
 
@@ -258,43 +251,45 @@ src/main/resources/
 3. **Static Analysis**: No new warnings introduced
 4. **Integration**: Code integrates cleanly with existing systems
 
-### ⚠️ What Needs Manual Testing:
+### Manual Testing Required
 
-#### Basic Functionality:
-- [ ] Drop items near a moving train → items should roll along with train
-- [ ] Drop items far from trains → should use normal vanilla physics
-- [ ] Items activate physics when train approaches
-- [ ] Items deactivate physics when train leaves
-- [ ] Items sleep when stationary on train
-- [ ] Items wake up when train accelerates/turns
+**IMPORTANT**: No runtime testing has been performed. All performance claims are design targets based on theoretical analysis.
 
-#### Configuration:
-- [ ] `lightweightEnabled = false` → disables all lightweight physics
-- [ ] `lightweightActivationRadius` → controls activation distance
-- [ ] `lightweightMaxActive` → enforces cap on active objects
-- [ ] `lightweightSleepVelocity` → controls sleep threshold
-- [ ] Config changes apply without restart (if hot-reload supported)
+#### Test Steps for Verification:
 
-#### Performance:
-- [ ] Spawn 100 items near train → should stay playable
-- [ ] Monitor `/debug` overlay for frame time impact
-- [ ] Verify sleeping system reduces CPU when items stationary
-- [ ] Check max active cap prevents runaway physics
+1. **Basic Functionality**:
+   ```
+   - Start dev server: ./gradlew runServer
+   - Place physics bogey on track, power it (Create motor)
+   - Drop 10 items near moving train → verify they roll with it
+   - Drop items 40m away → verify they use vanilla physics
+   - Move train away from items → verify physics deactivates
+   ```
 
-#### Edge Cases:
-- [ ] Items on moving track switches
-- [ ] Chunk unload/reload with physics items
-- [ ] Sublevel destruction while items attached
-- [ ] Items between two sublevels (should choose nearest)
-- [ ] Items thrown vs. dropped (both should work)
-- [ ] Items in water (currently disabled)
-- [ ] Multiple trains nearby (should attach to nearest)
+2. **Performance Test (100+ items)**:
+   ```
+   - Build a moving train loop with bogeys
+   - Use `/give @s minecraft:diamond 64` repeatedly
+   - Drop 100+ diamonds on/near moving train
+   - Press F3 to show debug overlay
+   - Check "ms ticks" - aim for <5ms increase
+   - Watch for stuttering or lag spikes
+   ```
 
-#### Multiplayer:
-- [ ] Client-server physics sync
-- [ ] No rubber-banding or jitter
-- [ ] Items behave same for all players
-- [ ] Server authoritative (client can't cheat)
+3. **Edge Cases**:
+   ```
+   a) Chunk unload: Drop items on train, teleport far, return
+   b) Sublevel destroyed: Drop items, break bogey mid-movement
+   c) Config toggle: Set lightweightEnabled=false, reload world
+   d) Track switches: Drop items on moving train navigating switches
+   ```
+
+4. **Multiplayer** (if applicable):
+   ```
+   - Connect 2+ clients to server
+   - Drop items on train, verify all players see same behavior
+   - Check for rubber-banding or desync
+   ```
 
 ### Testing Instructions:
 
@@ -481,7 +476,7 @@ If this implementation proves stable after manual testing, it could be offered a
 3. ✅ **Performance optimization pass**:
    - Staggered updates, sleeping, object pooling
    - Reduced allocations, spatial caching
-   - Target: <5ms for 100 items ✅
+   - Design target: <5ms for 100 items *(unmeasured - requires in-game testing)*
 
 4. ✅ **Build passes**:
    - `./gradlew build` successful
@@ -521,7 +516,7 @@ If this implementation proves stable after manual testing, it could be offered a
 - Track finding already efficient enough (not bottleneck)
 - Curved segment cache already exists
 - Would require more invasive changes
-- Current implementation meets performance target
+- Current implementation should meet design target (pending verification)
 
 ### Tested:
 
