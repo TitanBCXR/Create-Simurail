@@ -1,5 +1,6 @@
 package com.crystaelix.simurail;
 
+import com.crystaelix.simurail.client.config.LightweightPhysicsConfigScreen;
 import com.crystaelix.simurail.content.SimurailInteractCallbacks;
 import com.crystaelix.simurail.content.SimurailPartialModels;
 import com.crystaelix.simurail.content.SimurailParticleProviders;
@@ -21,7 +22,9 @@ public class SimurailClient {
 
 	public SimurailClient(IEventBus modEventBus, ModContainer modContainer) {
 		modEventBus.register(this);
-		modContainer.registerExtensionPoint(IConfigScreenFactory.class, (c, l) -> new BaseConfigScreen(l, Simurail.MOD_ID));
+		// Register custom Dex5-styled config screen for lightweight physics
+		modContainer.registerExtensionPoint(IConfigScreenFactory.class, 
+			(c, parent) -> new LightweightPhysicsConfigScreen(parent));
 		PonderIndex.addPlugin(new SimurailPonderPlugin());
 	}
 

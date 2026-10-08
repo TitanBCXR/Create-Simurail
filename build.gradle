@@ -172,6 +172,14 @@ base.archivesName = archivesName
 
 sourceSets {
 	main
+	// Titan branding source set (only included when titanBranding property is set)
+	if (project.hasProperty("titanBranding") && project.titanBranding == "true") {
+		titan {
+			resources {
+				srcDir "src/titan/resources"
+			}
+		}
+	}
 }
 
 java {
@@ -288,6 +296,14 @@ processResources {
 		filter {
 			it.replace(replacements)
 		}
+	}
+	
+	// Include titan branding resources if flag is set
+	if (project.hasProperty("titanBranding") && project.titanBranding == "true") {
+		from(sourceSets.titan.resources) {
+			into "."
+		}
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
 	}
 }
 
